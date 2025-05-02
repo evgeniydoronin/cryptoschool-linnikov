@@ -1,0 +1,395 @@
+/* Общие стили для админки */
+.cryptoschool-admin {
+    margin-top: 20px;
+}
+
+/* Стили для вкладок */
+.cryptoschool-admin-tabs {
+    margin-top: 20px;
+}
+
+.cryptoschool-admin-tabs-nav {
+    display: flex;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-bottom: 1px solid #ccc;
+}
+
+.cryptoschool-admin-tabs-nav li {
+    margin: 0;
+    padding: 0;
+}
+
+.cryptoschool-admin-tabs-nav a {
+    display: block;
+    padding: 10px 15px;
+    text-decoration: none;
+    color: #555;
+    font-weight: 500;
+    border: 1px solid transparent;
+    border-bottom: none;
+    margin-bottom: -1px;
+}
+
+.cryptoschool-admin-tabs-nav li.active a {
+    background-color: #fff;
+    border-color: #ccc;
+    border-bottom-color: #fff;
+    color: #000;
+}
+
+.cryptoschool-admin-tab {
+    display: none;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-top: none;
+    background-color: #fff;
+}
+
+.cryptoschool-admin-tab.active {
+    display: block;
+}
+
+/* Стили для карточек */
+.cryptoschool-admin-card {
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    margin-bottom: 20px;
+}
+
+.cryptoschool-admin-card h2 {
+    margin: 0;
+    padding: 15px;
+    border-bottom: 1px solid #ccc;
+    background-color: #f5f5f5;
+}
+
+.cryptoschool-admin-card-content {
+    padding: 15px;
+}
+
+/* Стили для форм */
+.cryptoschool-admin-form-row {
+    margin-bottom: 15px;
+}
+
+.cryptoschool-admin-form-row label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+
+.cryptoschool-admin-form-row input[type="text"],
+.cryptoschool-admin-form-row input[type="number"],
+.cryptoschool-admin-form-row input[type="email"],
+.cryptoschool-admin-form-row input[type="url"],
+.cryptoschool-admin-form-row input[type="password"],
+.cryptoschool-admin-form-row input[type="datetime-local"],
+.cryptoschool-admin-form-row input[type="date"],
+.cryptoschool-admin-form-row input[type="time"],
+.cryptoschool-admin-form-row textarea,
+.cryptoschool-admin-form-row select {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.cryptoschool-admin-form-row .description {
+    margin-top: 5px;
+    color: #666;
+}
+
+/* Стили для модальных окон */
+.cryptoschool-admin-modal {
+    position: fixed;
+    z-index: 100000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.cryptoschool-admin-modal-content {
+    background-color: #fefefe;
+    margin: 10% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 50%;
+    max-width: 600px;
+    border-radius: 3px;
+    position: relative;
+}
+
+/* Стили для изображений в модальных окнах */
+.cryptoschool-admin-modal-content img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Стили для превью изображений */
+.cryptoschool-thumbnail-preview {
+    margin-bottom: 10px;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.cryptoschool-thumbnail-preview img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 3px;
+}
+
+/* Стили для блока загрузки медиа */
+.cryptoschool-media-upload {
+    margin-bottom: 10px;
+}
+
+.cryptoschool-admin-modal-close {
+    color: #e53935; 
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 36px; 
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.cryptoschool-admin-modal-close:hover,
+.cryptoschool-admin-modal-close:focus {
+    color: #b71c1c;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+/* Стили для таблиц */
+.cryptoschool-admin-table-container {
+    margin-top: 15px;
+    margin-bottom: 15px;
+    overflow-x: auto;
+}
+
+.cryptoschool-admin-table .column-id, 
+.cryptoschool-admin-table .column-modules,
+.cryptoschool-admin-table .column-difficulty,
+.cryptoschool-admin-table .column-status,
+.cryptoschool-admin-table .column-order,
+.cryptoschool-admin-table .column-lessons {
+    width: 100px;
+}
+
+.cryptoschool-admin-table .column-title {
+    width: 40%; 
+}
+.cryptoschool-admin-table .column-actions {
+    display: flex; 
+    justify-content: space-around; 
+    align-items: center; 
+}
+
+.cryptoschool-admin-table .column-actions .button {
+    display: block; 
+    text-align: center; 
+}
+
+/* Стили для иконки удаления */
+.cryptoschool-admin-table .dashicons-trash {
+    color: #e53935; 
+    vertical-align: middle; 
+    cursor: pointer; 
+    display: inline-block; 
+    transition: color 0.2s ease; 
+}
+
+.cryptoschool-admin-table .dashicons-trash:hover {
+    color: #b71c1c; 
+}
+
+/* Стили для иконки редактирования */
+.cryptoschool-admin-table .dashicons-edit {
+    color: #4CAF50; /* Зеленый цвет для иконки */
+    vertical-align: middle; 
+    cursor: pointer; 
+    display: inline-block; 
+    transition: color 0.2s ease; 
+}
+
+.cryptoschool-admin-table .dashicons-edit:hover {
+    color: #388E3C; /* Темно-зеленый цвет при наведении */
+}
+
+/* Стили для иконки модулей */
+.cryptoschool-admin-table .dashicons-category {
+    color: #2196F3; /* Синий цвет для иконки */
+    vertical-align: middle; 
+    cursor: pointer; 
+    display: inline-block; 
+    transition: color 0.2s ease; 
+}
+
+.cryptoschool-admin-table .dashicons-category:hover {
+    color: #1976D2; /* Темно-синий цвет при наведении */
+}
+
+/* Стили для статистики */
+.cryptoschool-admin-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.cryptoschool-admin-stats-card {
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 15px;
+}
+
+.cryptoschool-admin-stats-card h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+}
+
+.cryptoschool-admin-stats-card ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.cryptoschool-admin-stats-card li {
+    margin-bottom: 5px;
+}
+
+/* Стили для информации о пользователе */
+.cryptoschool-admin-user-info {
+    padding: 10px;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    margin-bottom: 15px;
+}
+
+/* Стили для страницы редактирования урока */
+.cryptoschool-lesson-edit #titlediv {
+    margin-bottom: 20px;
+}
+
+.cryptoschool-lesson-edit #titlewrap {
+    margin-bottom: 15px;
+}
+
+.cryptoschool-lesson-edit #titlewrap input {
+    width: 100%;
+    font-size: 1.7em;
+    padding: 8px;
+}
+
+.cryptoschool-lesson-edit .cryptoschool-admin-form-row {
+    margin-bottom: 15px;
+}
+
+.cryptoschool-lesson-edit .cryptoschool-admin-form-row label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+.cryptoschool-lesson-edit .cryptoschool-admin-form-row .description {
+    margin-top: 5px;
+    color: #666;
+    font-style: italic;
+}
+
+/* Стили для метабоксов на странице редактирования урока */
+.cryptoschool-lesson-edit #poststuff {
+    padding-top: 10px;
+}
+
+.cryptoschool-lesson-edit #post-body {
+    margin-right: 300px;
+}
+
+.cryptoschool-lesson-edit #post-body-content {
+    float: left;
+    width: 100%;
+}
+
+.cryptoschool-lesson-edit #postbox-container-1 {
+    float: right;
+    margin-right: -300px;
+    width: 280px;
+}
+
+.cryptoschool-lesson-edit .postbox {
+    min-width: 255px;
+    border: 1px solid #ccd0d4;
+    background: #fff;
+    margin-bottom: 20px;
+    padding: 0;
+    line-height: 1;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.cryptoschool-lesson-edit .postbox .hndle {
+    border-bottom: 1px solid #ccd0d4;
+    cursor: default;
+    padding: 8px 12px;
+    margin: 0;
+    line-height: 1.4;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.cryptoschool-lesson-edit .postbox .inside {
+    padding: 12px;
+    line-height: 1.4em;
+    font-size: 13px;
+}
+
+.cryptoschool-lesson-edit #submitdiv .submitbox {
+    padding: 10px;
+}
+
+.cryptoschool-lesson-edit #submitdiv #major-publishing-actions {
+    border-top: 1px solid #ddd;
+    padding: 10px;
+    clear: both;
+    margin-top: 10px;
+}
+
+.cryptoschool-lesson-edit #submitdiv #publishing-action {
+    text-align: right;
+    float: right;
+    line-height: 23px;
+}
+
+.cryptoschool-lesson-edit #submitdiv .misc-pub-section {
+    padding: 6px 10px 8px;
+}
+
+/* Адаптивные стили для страницы редактирования урока */
+@media screen and (max-width: 782px) {
+    .cryptoschool-lesson-edit #post-body {
+        margin-right: 0;
+    }
+    
+    .cryptoschool-lesson-edit #post-body-content {
+        float: none;
+        width: 100%;
+    }
+    
+    .cryptoschool-lesson-edit #postbox-container-1 {
+        float: none;
+        margin-right: 0;
+        width: 100%;
+    }
+}

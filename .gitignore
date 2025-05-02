@@ -1,7 +1,8 @@
 # WordPress core files
 wp-admin/
 wp-includes/
-wp-content/plugins/
+wp-content/plugins/*
+!wp-content/plugins/cryptoschool/
 wp-content/upgrade/
 wp-content/upgrade-temp-backup/
 wp-content/themes/twentytwentythree/
