@@ -1,0 +1,54 @@
+# WordPress core files
+wp-admin/
+wp-includes/
+wp-content/plugins/
+wp-content/upgrade/
+wp-content/upgrade-temp-backup/
+wp-content/themes/twentytwentythree/
+wp-content/themes/twentytwentyfour/
+wp-content/themes/twentytwentyfive/
+wp-content/index.php
+wp-content/languages
+license.txt
+readme.html
+wp-*.php
+xmlrpc.php
+index.php
+
+# Configuration
+wp-config.php
+.htaccess
+
+# Log files
+*.log
+error_log
+access_log
+
+# Cache files
+wp-content/cache/
+wp-content/advanced-cache.php
+wp-content/wp-cache-config.php
+wp-content/db.php
+
+# Custom theme exceptions
+!wp-content/themes/cryptoschool/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Node modules and build files
+node_modules/
+npm-debug.log
+yarn-error.log

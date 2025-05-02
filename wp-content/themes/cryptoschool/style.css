@@ -1,0 +1,18 @@
+/*
+Theme Name: CryptoSchool
+Theme URI: 
+Author: Evgene Doronin
+Author URI: 
+Description: Тема для проекта "Крипто Школа"
+Version: 1.0.0
+License: GNU General Public License v2 or later
+License URI: http://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: cryptoschool
+*/
+
+/* Основные стили подключаются из frontend-source/dist/assets/main.css */
+
+.account-menu-info-avatar__circle img {
+  object-fit: contain;
+  width: 100%;
+}
