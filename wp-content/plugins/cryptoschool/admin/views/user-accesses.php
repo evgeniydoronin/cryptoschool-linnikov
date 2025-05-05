@@ -10,6 +10,58 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+
+// Подготовка данных пользователей для JavaScript
+$users_data = array();
+foreach ($users as $user) {
+    $users_data[] = array(
+        'id' => $user->ID,
+        'name' => $user->display_name,
+        'email' => $user->user_email
+    );
+}
+
+// Подготовка данных пакетов для JavaScript
+$packages_data = array();
+foreach ($packages as $package) {
+    $packages_data[] = array(
+        'id' => $package->id,
+        'title' => $package->title,
+        'type' => $package->package_type
+    );
+}
+
+// Локализация для JavaScript
+wp_enqueue_script('cryptoschool-user-accesses', CRYPTOSCHOOL_PLUGIN_URL . 'admin/js/user-accesses.js', array('jquery'), CRYPTOSCHOOL_VERSION, false);
+
+// Передаем переводы строк и данные в JavaScript
+wp_localize_script('cryptoschool-user-accesses', 'cryptoschool_user_accesses', array(
+    'users' => $users_data,
+    'packages' => $packages_data,
+    'nonce' => wp_create_nonce('cryptoschool_admin_nonce'),
+    'text_add_access' => __('Добавить доступ', 'cryptoschool'),
+    'text_edit_access' => __('Редактировать доступ', 'cryptoschool'),
+    'text_no_accesses' => __('Доступы не найдены.', 'cryptoschool'),
+    'text_user_not_found' => __('Пользователь не найден', 'cryptoschool'),
+    'text_package_not_found' => __('Пакет не найден', 'cryptoschool'),
+    'text_lifetime' => __('Пожизненно', 'cryptoschool'),
+    'text_active' => __('Активен', 'cryptoschool'),
+    'text_expired' => __('Истек', 'cryptoschool'),
+    'text_telegram_none' => __('Нет доступа', 'cryptoschool'),
+    'text_telegram_invited' => __('Приглашен', 'cryptoschool'),
+    'text_telegram_active' => __('Активен', 'cryptoschool'),
+    'text_telegram_removed' => __('Удален', 'cryptoschool'),
+    'text_edit' => __('Редактировать', 'cryptoschool'),
+    'text_delete' => __('Удалить', 'cryptoschool'),
+    'text_invite_telegram' => __('Пригласить в Telegram', 'cryptoschool'),
+    'text_activate_telegram' => __('Активировать в Telegram', 'cryptoschool'),
+    'text_remove_telegram' => __('Удалить из Telegram', 'cryptoschool'),
+    'error_loading_access' => __('Произошла ошибка при загрузке данных доступа.', 'cryptoschool'),
+    'error_saving_access' => __('Произошла ошибка при сохранении доступа.', 'cryptoschool'),
+    'error_deleting_access' => __('Произошла ошибка при удалении доступа.', 'cryptoschool'),
+    'error_updating_telegram' => __('Произошла ошибка при обновлении статуса в Telegram.', 'cryptoschool'),
+    'error_loading_accesses' => __('Произошла ошибка при загрузке доступов.', 'cryptoschool')
+));
 ?>
 
 <div class="wrap cryptoschool-admin cryptoschool-user-accesses-page">
@@ -88,8 +140,14 @@ if (!defined('ABSPATH')) {
                         <?php foreach ($user_accesses as $access) : ?>
                             <?php
                             $user = get_userdata($access->user_id);
-                            $package_service = new CryptoSchool_Service_Package($this->loader);
-                            $package = $package_service->get_by_id($access->package_id);
+                            // Находим пакет в массиве $packages
+                            $package = null;
+                            foreach ($packages as $p) {
+                                if ($p->id == $access->package_id) {
+                                    $package = $p;
+                                    break;
+                                }
+                            }
                             ?>
                             <tr data-id="<?php echo esc_attr($access->id); ?>">
                                 <td class="column-id"><?php echo esc_html($access->id); ?></td>
@@ -148,17 +206,17 @@ if (!defined('ABSPATH')) {
                                     ?>
                                 </td>
                                 <td class="column-actions">
-                                    <a href="#" class="button button-small edit-user-access" data-id="<?php echo esc_attr($access->id); ?>"><?php _e('Редактировать', 'cryptoschool'); ?></a>
-                                    <a href="#" class="button button-small delete-user-access" data-id="<?php echo esc_attr($access->id); ?>"><?php _e('Удалить', 'cryptoschool'); ?></a>
+                                    <a href="#" class="edit-user-access" data-id="<?php echo esc_attr($access->id); ?>" title="<?php _e('Редактировать', 'cryptoschool'); ?>"><span class="dashicons dashicons-edit"></span></a>
+                                    <a href="#" class="delete-user-access" data-id="<?php echo esc_attr($access->id); ?>" title="<?php _e('Удалить', 'cryptoschool'); ?>"><span class="dashicons dashicons-trash"></span></a>
                                     <?php if ($package && ($package->package_type === 'community' || $package->package_type === 'combined')) : ?>
                                         <?php if ($access->telegram_status === 'none') : ?>
-                                            <a href="#" class="button button-small invite-telegram" data-id="<?php echo esc_attr($access->id); ?>"><?php _e('Пригласить в Telegram', 'cryptoschool'); ?></a>
+                                            <a href="#" class="invite-telegram" data-id="<?php echo esc_attr($access->id); ?>" title="<?php _e('Пригласить в Telegram', 'cryptoschool'); ?>"><span class="dashicons dashicons-admin-users"></span></a>
                                         <?php elseif ($access->telegram_status === 'invited') : ?>
-                                            <a href="#" class="button button-small activate-telegram" data-id="<?php echo esc_attr($access->id); ?>"><?php _e('Активировать в Telegram', 'cryptoschool'); ?></a>
+                                            <a href="#" class="activate-telegram" data-id="<?php echo esc_attr($access->id); ?>" title="<?php _e('Активировать в Telegram', 'cryptoschool'); ?>"><span class="dashicons dashicons-yes"></span></a>
                                         <?php elseif ($access->telegram_status === 'active') : ?>
-                                            <a href="#" class="button button-small remove-telegram" data-id="<?php echo esc_attr($access->id); ?>"><?php _e('Удалить из Telegram', 'cryptoschool'); ?></a>
+                                            <a href="#" class="remove-telegram" data-id="<?php echo esc_attr($access->id); ?>" title="<?php _e('Удалить из Telegram', 'cryptoschool'); ?>"><span class="dashicons dashicons-no"></span></a>
                                         <?php elseif ($access->telegram_status === 'removed') : ?>
-                                            <a href="#" class="button button-small invite-telegram" data-id="<?php echo esc_attr($access->id); ?>"><?php _e('Пригласить в Telegram', 'cryptoschool'); ?></a>
+                                            <a href="#" class="invite-telegram" data-id="<?php echo esc_attr($access->id); ?>" title="<?php _e('Пригласить в Telegram', 'cryptoschool'); ?>"><span class="dashicons dashicons-admin-users"></span></a>
                                         <?php endif; ?>
                                     <?php endif; ?>
                                 </td>
@@ -253,326 +311,19 @@ if (!defined('ABSPATH')) {
 </div>
 
 <script type="text/javascript">
-jQuery(document).ready(function($) {
-    // Форматирование даты и времени для input datetime-local
-    function formatDateTimeForInput(dateString) {
-        if (!dateString) return '';
-        var date = new Date(dateString);
-        return date.getFullYear() + '-' + 
-               ('0' + (date.getMonth() + 1)).slice(-2) + '-' + 
-               ('0' + date.getDate()).slice(-2) + 'T' + 
-               ('0' + date.getHours()).slice(-2) + ':' + 
-               ('0' + date.getMinutes()).slice(-2);
-    }
-    
-    // Открытие модального окна для добавления доступа
-    $('.add-new-user-access').on('click', function(e) {
-        e.preventDefault();
-        $('#cryptoschool-user-access-modal-title').text('<?php _e('Добавить доступ', 'cryptoschool'); ?>');
-        $('#cryptoschool-user-access-form')[0].reset();
-        $('#user-access-id').val(0);
-        
-        // Установка текущей даты и времени
-        var now = new Date();
-        var formattedNow = formatDateTimeForInput(now);
-        $('#user-access-start').val(formattedNow);
-        
-        $('#cryptoschool-user-access-modal').show();
-    });
-    
-    // Открытие модального окна для редактирования доступа
-    $(document).on('click', '.edit-user-access', function(e) {
-        e.preventDefault();
-        var accessId = $(this).data('id');
-        
-        // Загрузка данных доступа
-        $.ajax({
-            url: ajaxurl,
-            type: 'POST',
-            dataType: 'json',
-            data: {
-                action: 'cryptoschool_get_user_access',
-                nonce: cryptoschool_admin.nonce,
-                id: accessId
-            },
-            success: function(response) {
-                if (response.success) {
-                    var access = response.data;
-                    
-                    $('#cryptoschool-user-access-modal-title').text('<?php _e('Редактировать доступ', 'cryptoschool'); ?>');
-                    $('#user-access-id').val(access.id);
-                    $('#user-access-user').val(access.user_id);
-                    $('#user-access-package').val(access.package_id);
-                    $('#user-access-start').val(formatDateTimeForInput(access.access_start));
-                    
-                    // Расчет продолжительности из даты окончания
-                    if (access.access_end) {
-                        var startDate = new Date(access.access_start);
-                        var endDate = new Date(access.access_end);
-                        var diffMonths = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
-                        $('#user-access-duration').val(diffMonths);
-                    } else {
-                        $('#user-access-duration').val('');
-                    }
-                    
-                    $('#user-access-status').val(access.status);
-                    $('#user-access-telegram').val(access.telegram_status);
-                    
-                    $('#cryptoschool-user-access-modal').show();
-                } else {
-                    alert(response.data);
-                }
-            },
-            error: function() {
-                alert('<?php _e('Произошла ошибка при загрузке данных доступа.', 'cryptoschool'); ?>');
-            }
-        });
-    });
-    
-    // Сохранение доступа
-    $('#cryptoschool-user-access-form').on('submit', function(e) {
-        e.preventDefault();
-        
-        var formData = $(this).serialize();
-        var accessId = $('#user-access-id').val();
-        var action = accessId > 0 ? 'cryptoschool_update_user_access' : 'cryptoschool_create_user_access';
-        
-        $.ajax({
-            url: ajaxurl,
-            type: 'POST',
-            dataType: 'json',
-            data: {
-                action: action,
-                nonce: cryptoschool_admin.nonce,
-                ...formData
-            },
-            success: function(response) {
-                if (response.success) {
-                    location.reload();
-                } else {
-                    alert(response.data);
-                }
-            },
-            error: function() {
-                alert('<?php _e('Произошла ошибка при сохранении доступа.', 'cryptoschool'); ?>');
-            }
-        });
-    });
-    
-    // Открытие модального окна для подтверждения удаления
-    $(document).on('click', '.delete-user-access', function(e) {
-        e.preventDefault();
-        var accessId = $(this).data('id');
-        $('#cryptoschool-confirm-delete').data('id', accessId);
-        $('#cryptoschool-delete-modal').show();
-    });
-    
-    // Удаление доступа
-    $('#cryptoschool-confirm-delete').on('click', function() {
-        var accessId = $(this).data('id');
-        
-        $.ajax({
-            url: ajaxurl,
-            type: 'POST',
-            dataType: 'json',
-            data: {
-                action: 'cryptoschool_delete_user_access',
-                nonce: cryptoschool_admin.nonce,
-                id: accessId
-            },
-            success: function(response) {
-                if (response.success) {
-                    location.reload();
-                } else {
-                    alert(response.data);
-                }
-            },
-            error: function() {
-                alert('<?php _e('Произошла ошибка при удалении доступа.', 'cryptoschool'); ?>');
-            }
-        });
-    });
-    
-    // Обновление статуса в Telegram
-    $(document).on('click', '.invite-telegram, .activate-telegram, .remove-telegram', function(e) {
-        e.preventDefault();
-        var accessId = $(this).data('id');
-        var newStatus = '';
-        
-        if ($(this).hasClass('invite-telegram')) {
-            newStatus = 'invited';
-        } else if ($(this).hasClass('activate-telegram')) {
-            newStatus = 'active';
-        } else if ($(this).hasClass('remove-telegram')) {
-            newStatus = 'removed';
-        }
-        
-        if (newStatus) {
-            $.ajax({
-                url: ajaxurl,
-                type: 'POST',
-                dataType: 'json',
-                data: {
-                    action: 'cryptoschool_update_telegram_status',
-                    nonce: cryptoschool_admin.nonce,
-                    id: accessId,
-                    telegram_status: newStatus
-                },
-                success: function(response) {
-                    if (response.success) {
-                        location.reload();
-                    } else {
-                        alert(response.data);
-                    }
-                },
-                error: function() {
-                    alert('<?php _e('Произошла ошибка при обновлении статуса в Telegram.', 'cryptoschool'); ?>');
-                }
-            });
-        }
-    });
-    
-    // Закрытие модальных окон
-    $('.cryptoschool-admin-modal-close, .cryptoschool-modal-cancel').on('click', function() {
-        $('.cryptoschool-admin-modal').hide();
-    });
-    
-    // Закрытие модальных окон при клике вне содержимого
-    $(window).on('click', function(e) {
-        if ($(e.target).hasClass('cryptoschool-admin-modal')) {
-            $('.cryptoschool-admin-modal').hide();
-        }
-    });
-    
-    // Фильтрация доступов
-    $('#cryptoschool-filter-apply').on('click', function() {
-        var userId = $('#cryptoschool-filter-user').val();
-        var packageId = $('#cryptoschool-filter-package').val();
-        var status = $('#cryptoschool-filter-status').val();
-        var telegramStatus = $('#cryptoschool-filter-telegram').val();
-        
-        $.ajax({
-            url: ajaxurl,
-            type: 'POST',
-            dataType: 'json',
-            data: {
-                action: 'cryptoschool_get_user_accesses',
-                nonce: cryptoschool_admin.nonce,
-                user_id: userId,
-                package_id: packageId,
-                status: status,
-                telegram_status: telegramStatus
-            },
-            success: function(response) {
-                if (response.success) {
-                    var accesses = response.data;
-                    var html = '';
-                    
-                    if (accesses.length === 0) {
-                        html = '<tr><td colspan="8"><?php _e('Доступы не найдены.', 'cryptoschool'); ?></td></tr>';
-                    } else {
-                        for (var i = 0; i < accesses.length; i++) {
-                            var access = accesses[i];
-                            html += '<tr data-id="' + access.id + '">';
-                            html += '<td class="column-id">' + access.id + '</td>';
-                            html += '<td class="column-user">';
-                            
-                            if (access.user_name) {
-                                html += '<strong>' + access.user_name + '</strong>';
-                                html += '<div class="row-actions">';
-                                html += '<span class="email">' + access.user_email + '</span>';
-                                html += '</div>';
-                            } else {
-                                html += '<span class="user-not-found"><?php _e('Пользователь не найден', 'cryptoschool'); ?></span>';
-                            }
-                            
-                            html += '</td>';
-                            html += '<td class="column-package">';
-                            
-                            if (access.package_title) {
-                                html += access.package_title;
-                            } else {
-                                html += '<span class="package-not-found"><?php _e('Пакет не найден', 'cryptoschool'); ?></span>';
-                            }
-                            
-                            html += '</td>';
-                            html += '<td class="column-start">' + new Date(access.access_start).toLocaleString() + '</td>';
-                            html += '<td class="column-end">';
-                            
-                            if (access.access_end) {
-                                html += new Date(access.access_end).toLocaleString();
-                            } else {
-                                html += '<span class="lifetime"><?php _e('Пожизненно', 'cryptoschool'); ?></span>';
-                            }
-                            
-                            html += '</td>';
-                            html += '<td class="column-status">';
-                            
-                            if (access.status === 'active') {
-                                html += '<span class="status-active"><?php _e('Активен', 'cryptoschool'); ?></span>';
-                            } else {
-                                html += '<span class="status-expired"><?php _e('Истек', 'cryptoschool'); ?></span>';
-                            }
-                            
-                            html += '</td>';
-                            html += '<td class="column-telegram">';
-                            
-                            switch (access.telegram_status) {
-                                case 'none':
-                                    html += '<span class="telegram-none"><?php _e('Нет доступа', 'cryptoschool'); ?></span>';
-                                    break;
-                                case 'invited':
-                                    html += '<span class="telegram-invited"><?php _e('Приглашен', 'cryptoschool'); ?></span>';
-                                    break;
-                                case 'active':
-                                    html += '<span class="telegram-active"><?php _e('Активен', 'cryptoschool'); ?></span>';
-                                    break;
-                                case 'removed':
-                                    html += '<span class="telegram-removed"><?php _e('Удален', 'cryptoschool'); ?></span>';
-                                    break;
-                                default:
-                                    html += access.telegram_status;
-                            }
-                            
-                            html += '</td>';
-                            html += '<td class="column-actions">';
-                            html += '<a href="#" class="button button-small edit-user-access" data-id="' + access.id + '"><?php _e('Редактировать', 'cryptoschool'); ?></a> ';
-                            html += '<a href="#" class="button button-small delete-user-access" data-id="' + access.id + '"><?php _e('Удалить', 'cryptoschool'); ?></a> ';
-                            
-                            if (access.package_type === 'community' || access.package_type === 'combined') {
-                                if (access.telegram_status === 'none') {
-                                    html += '<a href="#" class="button button-small invite-telegram" data-id="' + access.id + '"><?php _e('Пригласить в Telegram', 'cryptoschool'); ?></a>';
-                                } else if (access.telegram_status === 'invited') {
-                                    html += '<a href="#" class="button button-small activate-telegram" data-id="' + access.id + '"><?php _e('Активировать в Telegram', 'cryptoschool'); ?></a>';
-                                } else if (access.telegram_status === 'active') {
-                                    html += '<a href="#" class="button button-small remove-telegram" data-id="' + access.id + '"><?php _e('Удалить из Telegram', 'cryptoschool'); ?></a>';
-                                } else if (access.telegram_status === 'removed') {
-                                    html += '<a href="#" class="button button-small invite-telegram" data-id="' + access.id + '"><?php _e('Пригласить в Telegram', 'cryptoschool'); ?></a>';
-                                }
-                            }
-                            
-                            html += '</td>';
-                            html += '</tr>';
-                        }
-                    }
-                    
-                    $('#cryptoschool-user-accesses-list').html(html);
-                } else {
-                    alert(response.data);
-                }
-            },
-            error: function() {
-                alert('<?php _e('Произошла ошибка при загрузке доступов.', 'cryptoschool'); ?>');
-            }
-        });
-    });
-    
-    // Сброс фильтров
-    $('#cryptoschool-filter-reset').on('click', function() {
-        $('#cryptoschool-filter-user').val('');
-        $('#cryptoschool-filter-package').val('');
-        $('#cryptoschool-filter-status').val('');
-        $('#cryptoschool-filter-telegram').val('');
-        $('#cryptoschool-filter-apply').click();
-    });
-});
+// Определение объекта cryptoschool_admin, если он не определен
+if (typeof window.cryptoschool_admin === 'undefined') {
+    window.cryptoschool_admin = {
+        ajax_url: ajaxurl,
+        nonce: '<?php echo wp_create_nonce("cryptoschool_admin_nonce"); ?>',
+        media_title: '<?php echo esc_js(__("Выберите изображение", "cryptoschool")); ?>',
+        media_button: '<?php echo esc_js(__("Использовать это изображение", "cryptoschool")); ?>',
+        media_select: '<?php echo esc_js(__("Выбрать изображение", "cryptoschool")); ?>',
+        media_change: '<?php echo esc_js(__("Изменить изображение", "cryptoschool")); ?>',
+        confirm_default: '<?php echo esc_js(__("Вы уверены?", "cryptoschool")); ?>',
+        confirm_delete: '<?php echo esc_js(__("Вы уверены, что хотите удалить этот элемент? Это действие нельзя отменить.", "cryptoschool")); ?>',
+        error_message: '<?php echo esc_js(__("Произошла ошибка. Пожалуйста, попробуйте еще раз.", "cryptoschool")); ?>',
+        success_message: '<?php echo esc_js(__("Успешно сохранено!", "cryptoschool")); ?>'
+    };
+}
+</script>

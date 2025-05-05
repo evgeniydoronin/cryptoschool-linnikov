@@ -5,6 +5,11 @@
  * @package CryptoSchool
  */
 
+// Если файл вызван напрямую, прерываем выполнение
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 // Если пользователь не авторизован, перенаправляем на страницу входа
 if (!is_user_logged_in()) {
     wp_redirect(site_url('/sign-in/'));
@@ -13,74 +18,82 @@ if (!is_user_logged_in()) {
 
 get_header();
 
-// Заглушки для курсов (можно заменить на реальные данные из БД)
-$courses = array(
-    array(
-        'id' => 1,
-        'title' => 'Основи',
-        'status' => 'done',
-        'image' => get_template_directory_uri() . '/frontend-source/dist/assets/img/temp/course-card-illustration.png',
-        'topics' => array(
-            'Знакомство с нами',
-            'Що таке крипта',
-            'Что такое блокчейн?',
-            'Токены и монеты — в чем разница?',
-            'Експлорер'
-        )
-    ),
-    array(
-        'id' => 2,
-        'title' => 'Діскрод і ТГ',
-        'status' => 'done',
-        'image' => get_template_directory_uri() . '/frontend-source/dist/assets/img/temp/course-card-illustration.png',
-        'topics' => array(
-            'Введение в Discord и поддержка',
-            'Телеграм бот и ветки'
-        )
-    ),
-    array(
-        'id' => 3,
-        'title' => 'CEX',
-        'status' => 'in_progress',
-        'image' => get_template_directory_uri() . '/frontend-source/dist/assets/img/temp/course-card-illustration.png',
-        'topics' => array(
-            'Robota із Біржами',
-            'Что такое биржа и как она работает?',
-            'Как зарегистрироваться на бирже?',
-            'Как купить первую крипту? п2п + кантор',
-            'Основы спотовой торговли',
-            'Фючерсы',
-            'Риск-менеджмент в торговле'
-        )
-    ),
-    array(
-        'id' => 4,
-        'title' => 'Кошельки',
-        'status' => 'locked',
-        'image' => get_template_directory_uri() . '/frontend-source/dist/assets/img/temp/course-card-illustration.png',
-        'topics' => array(
-            'Создание криптокошелька',
-            'Безопасность',
-            'Вывод токенов на кошелек, перевод между кошельками',
-            'Трасті'
-        )
-    ),
-    array(
-        'id' => 5,
-        'title' => 'DEFI',
-        'status' => 'locked',
-        'image' => get_template_directory_uri() . '/frontend-source/dist/assets/img/temp/course-card-illustration.png',
-        'topics' => array(
-            'Что такое DeFi?',
-            'Лендінг і позики в крипті',
-            'Основы стейкинга',
-            'Бріджи и межсетевые операции',
-            'Что такое ЛП та фармінг',
-            'Хедж',
-            'Інструменти в крипті'
-        )
-    )
-);
+// Получаем текущего пользователя
+$current_user_id = get_current_user_id();
+
+// Получаем только курсы, доступные пользователю
+$course_repository = new CryptoSchool_Repository_Course();
+$courses = $course_repository->get_user_courses($current_user_id, [
+    'is_active' => 1,
+    'orderby' => 'c.course_order',
+    'order' => 'ASC'
+]);
+
+// Отладочная информация (закомментирована)
+/*
+try {
+    // Получаем детали первого курса, если он есть
+    $first_course = !empty($courses) ? $courses[0] : null;
+    $first_course_details = null;
+    $first_course_lessons = [];
+    $is_available = false;
+    $progress = 0;
+    
+    if ($first_course) {
+        $first_course_details = [
+            'id' => $first_course->getAttribute('id'),
+            'title' => $first_course->getAttribute('title'),
+            'description' => $first_course->getAttribute('description'),
+            'thumbnail' => $first_course->getAttribute('thumbnail'),
+            'is_active' => $first_course->getAttribute('is_active'),
+            'all_attributes' => $first_course->getAttributes()
+        ];
+        
+        // Проверяем доступность курса для пользователя
+        try {
+            $is_available = $first_course->is_available_for_user($current_user_id);
+        } catch (Exception $e) {
+            $is_available = 'Error: ' . $e->getMessage();
+        }
+        
+        // Получаем прогресс пользователя по курсу
+        try {
+            $progress = $is_available ? $first_course->get_user_progress($current_user_id) : 0;
+        } catch (Exception $e) {
+            $progress = 'Error: ' . $e->getMessage();
+        }
+        
+        // Получаем уроки курса
+        try {
+            $lessons = $first_course->get_lessons();
+            $first_course_lessons = !empty($lessons) ? array_map(function($lesson) {
+                return [
+                    'id' => $lesson->getAttribute('id'),
+                    'title' => $lesson->getAttribute('title')
+                ];
+            }, $lessons) : [];
+        } catch (Exception $e) {
+            $first_course_lessons = ['Error' => $e->getMessage()];
+        }
+    }
+    
+    dd([
+        'repository' => get_class($course_repository),
+        'table_name' => $course_repository->get_table_name(),
+        'courses_count' => count($courses),
+        'current_user_id' => $current_user_id,
+        'first_course_details' => $first_course_details,
+        'is_available' => $is_available,
+        'progress' => $progress,
+        'first_course_lessons' => $first_course_lessons
+    ]);
+} catch (Exception $e) {
+    dd([
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+    ]);
+}
+*/
 
 // Заглушки для последних заданий
 $last_tasks = array(
@@ -222,36 +235,120 @@ $last_tasks = array(
             <hr class="account-block__horizontal-row">
             
             <div class="courses__list">
-                <?php foreach ($courses as $course) : ?>
-                    <div class="course-card <?php echo $course['status'] === 'done' ? 'course-card_done' : ($course['status'] === 'locked' ? 'course-card_locked' : ''); ?>">
-                        <div class="course-card__header">
-                            <?php if ($course['status'] === 'done') : ?>
-                                <div class="text-small course-card__badge">Пройдено</div>
-                            <?php endif; ?>
-                            <img class="course-card__image" src="<?php echo esc_url($course['image']); ?>">
+                <?php if (empty($courses)) : ?>
+                    <p class="text-small">Курсы не найдены</p>
+                <?php else : ?>
+                    <?php 
+                    // Отладочная информация
+                    echo '<div style="background-color: #fff; color: #000; padding: 10px; margin-bottom: 20px; border-radius: 5px;">';
+                    echo '<h3>Отладочная информация</h3>';
+                    echo '<p>Количество курсов: ' . count($courses) . '</p>';
+                    echo '<p>ID текущего пользователя: ' . $current_user_id . '</p>';
+                    
+                    // Проверяем таблицу доступов
+                    global $wpdb;
+                    $access_table = $wpdb->prefix . 'cryptoschool_user_access';
+                    $packages_table = $wpdb->prefix . 'cryptoschool_packages';
+                    
+                    $query = $wpdb->prepare(
+                        "SELECT a.*, p.course_ids FROM {$access_table} a
+                        INNER JOIN {$packages_table} p ON a.package_id = p.id
+                        WHERE a.user_id = %d AND a.status = 'active'",
+                        $current_user_id
+                    );
+                    
+                    $accesses = $wpdb->get_results($query);
+                    
+                    echo '<p>Количество активных доступов: ' . count($accesses) . '</p>';
+                    
+                    if (!empty($accesses)) {
+                        echo '<ul>';
+                        foreach ($accesses as $access) {
+                            echo '<li>Доступ ID: ' . $access->id . ', Пакет ID: ' . $access->package_id . ', Курсы: ' . $access->course_ids . '</li>';
+                        }
+                        echo '</ul>';
+                    }
+                    
+                    echo '</div>';
+                    
+                    // Переменная для отслеживания, завершен ли предыдущий курс
+                    $previous_course_completed = true;
+                    
+                    foreach ($courses as $course) : 
+                        // Получаем ID курса
+                        $course_id = $course->getAttribute('id');
+                        
+                        // Определяем статус курса для пользователя
+                        $is_available = $course->is_available_for_user($current_user_id);
+                        $progress = $is_available ? $course->get_user_progress($current_user_id) : 0;
+                        
+                        // Отладочная информация для каждого курса
+                        echo '<div style="background-color: #fff; color: #000; padding: 10px; margin-bottom: 10px; border-radius: 5px;">';
+                        echo '<p>Курс ID: ' . $course_id . ', Название: ' . $course->getAttribute('title') . '</p>';
+                        echo '<p>Доступен: ' . ($is_available ? 'Да' : 'Нет') . ', Прогресс: ' . $progress . '%</p>';
+                        echo '</div>';
+                        
+                        // Определяем статус на основе прогресса, доступности и завершения предыдущего курса
+                        if (!$previous_course_completed) {
+                            // Если предыдущий курс не завершен, этот курс заблокирован
+                            $status = 'locked';
+                        } else {
+                            // Иначе определяем статус на основе доступности и прогресса
+                            $status = !$is_available ? 'locked' : ($progress >= 100 ? 'done' : 'in_progress');
+                            
+                            // Обновляем статус завершения предыдущего курса для следующей итерации
+                            $previous_course_completed = ($status === 'done');
+                        }
+                        
+                        // Получаем уроки курса для отображения в списке тем
+                        $lessons = $course->get_lessons();
+                        
+                        // Получаем URL изображения курса
+                        $image_url = $course->get_thumbnail_url('medium');
+                        if (empty($image_url)) {
+                            $image_url = get_template_directory_uri() . '/frontend-source/dist/assets/img/temp/course-card-illustration.png';
+                        }
+                    ?>
+                        <div class="course-card <?php echo $status === 'done' ? 'course-card_done' : ($status === 'locked' ? 'course-card_locked' : ''); ?>">
+                            <div class="course-card__header">
+                                <?php if ($status === 'done') : ?>
+                                    <div class="text-small course-card__badge">Пройдено</div>
+                                <?php endif; ?>
+                                <img class="course-card__image" src="<?php echo esc_url($image_url); ?>">
+                            </div>
+                            <div class="course-card__body">
+                                <div class="h6 course-card__title"><?php echo esc_html($course->getAttribute('title')); ?></div>
+                                <ul class="account-list course-card__list">
+                                    <?php 
+                                    // Выводим до 5 уроков в качестве тем курса
+                                    $topics_count = 0;
+                                    foreach ($lessons as $lesson) : 
+                                        if ($topics_count >= 5) break; // Ограничиваем количество тем
+                                    ?>
+                                        <li><?php echo esc_html($lesson->getAttribute('title')); ?></li>
+                                    <?php 
+                                        $topics_count++;
+                                    endforeach; 
+                                    ?>
+                                </ul>
+                                <?php if (count($lessons) > 5) : ?>
+                                    <div class="course-card__ellipsis text-small">...</div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="course-card__footer">
+                                <?php if ($status === 'locked') : ?>
+                                    <button class="button button_filled button_rounded button_centered button_block" disabled>
+                                        <span class="button__text">Зайти в курс</span>
+                                    </button>
+                                <?php else : ?>
+                                    <a href="<?php echo esc_url(site_url('/course/?id=' . $course_id)); ?>" class="button button_filled button_rounded button_centered button_block">
+                                        <span class="button__text">Зайти в курс</span>
+                                    </a>
+                                <?php endif; ?>
+                            </div>
                         </div>
-                        <div class="course-card__body">
-                            <div class="h6 course-card__title"><?php echo esc_html($course['title']); ?></div>
-                            <ul class="account-list course-card__list">
-                                <?php foreach ($course['topics'] as $topic) : ?>
-                                    <li><?php echo esc_html($topic); ?></li>
-                                <?php endforeach; ?>
-                            </ul>
-                            <div class="course-card__ellipsis text-small">...</div>
-                        </div>
-                        <div class="course-card__footer">
-                            <?php if ($course['status'] === 'locked') : ?>
-                                <button class="button button_filled button_rounded button_centered button_block" disabled>
-                                    <span class="button__text">Зайти в курс</span>
-                                </button>
-                            <?php else : ?>
-                                <a href="<?php echo esc_url(site_url('/course/?id=' . $course['id'])); ?>" class="button button_filled button_rounded button_centered button_block">
-                                    <span class="button__text">Зайти в курс</span>
-                                </a>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </div>
         </div>
         

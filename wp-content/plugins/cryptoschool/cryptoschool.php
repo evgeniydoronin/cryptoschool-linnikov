@@ -3,7 +3,7 @@
  * Plugin Name: Crypto School
  * Plugin URI: https://cryptoschool.com
  * Description: Образовательная платформа для обучения криптовалютам
- * Version: 1.0.0
+ * Version: 1.0.4
  * Author: Evgeniy Doronin
  * Author URI: https://evgenedoronin.dev
  * Text Domain: cryptoschool
@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Определение констант плагина
-define('CRYPTOSCHOOL_VERSION', '1.0.0');
+define('CRYPTOSCHOOL_VERSION', '1.0.4');
 define('CRYPTOSCHOOL_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CRYPTOSCHOOL_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('CRYPTOSCHOOL_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -99,10 +99,18 @@ class CryptoSchool {
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-course.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-lesson.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-access.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-lesson-task.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-lesson-progress.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-task-progress.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-course.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-lesson.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-user-access.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-lesson-task.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-user-lesson-progress.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-user-task-progress.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-course.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-lesson.php';
         

@@ -114,8 +114,8 @@ if (!defined('ABSPATH')) {
                                     <?php endif; ?>
                                 </td>
                                 <td class="column-actions">
-                                    <a href="#" class="button button-small edit-package" data-id="<?php echo esc_attr($package->id); ?>"><?php _e('Редактировать', 'cryptoschool'); ?></a>
-                                    <a href="#" class="button button-small delete-package" data-id="<?php echo esc_attr($package->id); ?>"><?php _e('Удалить', 'cryptoschool'); ?></a>
+                                    <a href="#" class="edit-package" data-id="<?php echo esc_attr($package->id); ?>"><span class="dashicons dashicons-edit"></span></a>
+                                    <a href="#" class="delete-package" data-id="<?php echo esc_attr($package->id); ?>"><span class="dashicons dashicons-trash"></span></a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -300,11 +300,7 @@ jQuery(document).ready(function($) {
             url: ajaxurl,
             type: 'POST',
             dataType: 'json',
-            data: {
-                action: action,
-                nonce: cryptoschool_admin.nonce,
-                ...formData
-            },
+            data: formData + '&action=' + action + '&nonce=' + cryptoschool_admin.nonce,
             success: function(response) {
                 if (response.success) {
                     location.reload();
@@ -442,8 +438,8 @@ jQuery(document).ready(function($) {
                             }
                             html += '</td>';
                             html += '<td class="column-actions">';
-                            html += '<a href="#" class="button button-small edit-package" data-id="' + package.id + '"><?php _e('Редактировать', 'cryptoschool'); ?></a> ';
-                            html += '<a href="#" class="button button-small delete-package" data-id="' + package.id + '"><?php _e('Удалить', 'cryptoschool'); ?></a>';
+                            html += '<a href="#" class="edit-package" data-id="' + package.id + '"><span class="dashicons dashicons-edit"></span></a> ';
+                            html += '<a href="#" class="delete-package" data-id="' + package.id + '"><span class="dashicons dashicons-trash"></span></a>';
                             html += '</td>';
                             html += '</tr>';
                         }

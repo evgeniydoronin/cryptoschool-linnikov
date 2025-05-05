@@ -88,14 +88,42 @@ class CryptoSchool_Repository_UserAccess extends CryptoSchool_Repository {
     public function get_user_package_access($user_id, $package_id) {
         global $wpdb;
 
+        // Отладочный вывод
+        error_log('CryptoSchool_Repository_UserAccess::get_user_package_access - Проверка доступа для user_id=' . $user_id . ', package_id=' . $package_id);
+        error_log('CryptoSchool_Repository_UserAccess::get_user_package_access - Таблица: ' . $this->table_name);
+
+        // Проверка существования таблицы
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->table_name}'");
+        if (!$table_exists) {
+            error_log('CryptoSchool_Repository_UserAccess::get_user_package_access - ОШИБКА: Таблица ' . $this->table_name . ' не существует!');
+            return null;
+        }
+
+        // Получение всех записей из таблицы для отладки
+        $all_records = $wpdb->get_results("SELECT * FROM {$this->table_name}", ARRAY_A);
+        error_log('CryptoSchool_Repository_UserAccess::get_user_package_access - Всего записей в таблице: ' . count($all_records));
+        foreach ($all_records as $index => $record) {
+            error_log('CryptoSchool_Repository_UserAccess::get_user_package_access - Запись #' . $index . ': ' . json_encode($record));
+        }
+
         $query = $wpdb->prepare(
             "SELECT * FROM {$this->table_name} 
-            WHERE user_id = %d AND package_id = %d AND status = 'active'",
+            WHERE user_id = %d AND package_id = %d",
             $user_id,
             $package_id
         );
 
+        // Отладочный вывод
+        error_log('CryptoSchool_Repository_UserAccess::get_user_package_access - SQL запрос: ' . $query);
+
         $result = $wpdb->get_row($query, ARRAY_A);
+
+        // Отладочный вывод
+        if ($result) {
+            error_log('CryptoSchool_Repository_UserAccess::get_user_package_access - Найден доступ: ' . json_encode($result));
+        } else {
+            error_log('CryptoSchool_Repository_UserAccess::get_user_package_access - Доступ не найден');
+        }
 
         if (!$result) {
             return null;
@@ -123,7 +151,7 @@ class CryptoSchool_Repository_UserAccess extends CryptoSchool_Repository {
             AND (
                 p.package_type = 'course' OR p.package_type = 'combined'
             )
-            AND FIND_IN_SET(%d, p.course_ids)",
+            AND JSON_CONTAINS(p.course_ids, CONCAT('\"', %d, '\"'))",
             $user_id,
             $course_id
         );

@@ -193,6 +193,10 @@ class CryptoSchool_Admin_Lessons_Controller extends CryptoSchool_Admin_Controlle
         $completion_points = isset($_POST['completion_points']) ? (int) $_POST['completion_points'] : 5;
         $is_active = isset($_POST['is_active']) ? (int) $_POST['is_active'] : 1;
         
+        // Получение данных заданий
+        $task_ids = isset($_POST['task_ids']) ? $_POST['task_ids'] : array();
+        $task_titles = isset($_POST['task_titles']) ? $_POST['task_titles'] : array();
+        
         // Проверка обязательных полей
         if (!$course_id) {
             wp_die(__('Не указан ID курса.', 'cryptoschool'));
@@ -228,6 +232,11 @@ class CryptoSchool_Admin_Lessons_Controller extends CryptoSchool_Admin_Controlle
             wp_die(__('Не удалось сохранить урок.', 'cryptoschool'));
         }
         
+        // Сохранение заданий урока
+        if ($lesson_id) {
+            $this->save_lesson_tasks($lesson_id, $task_ids, $task_titles);
+        }
+        
         // Перенаправление на страницу уроков с сообщением об успехе
         wp_redirect(add_query_arg(
             array(
@@ -239,6 +248,67 @@ class CryptoSchool_Admin_Lessons_Controller extends CryptoSchool_Admin_Controlle
             admin_url('admin.php')
         ));
         exit;
+    }
+    
+    /**
+     * Сохранение заданий урока
+     *
+     * @param int   $lesson_id   ID урока
+     * @param array $task_ids    Массив ID заданий
+     * @param array $task_titles Массив названий заданий
+     * @return bool
+     */
+    private function save_lesson_tasks($lesson_id, $task_ids, $task_titles) {
+        // Создаем репозиторий для работы с заданиями
+        $task_repository = new CryptoSchool_Repository_Lesson_Task();
+        
+        // Получаем текущие задания урока
+        $current_tasks = $task_repository->get_lesson_tasks($lesson_id);
+        $current_task_ids = array_map(function($task) {
+            return $task->id;
+        }, $current_tasks);
+        
+        // Массив для хранения ID заданий, которые нужно удалить
+        $tasks_to_delete = array_diff($current_task_ids, $task_ids);
+        
+        // Удаляем задания, которых нет в новом списке
+        foreach ($tasks_to_delete as $task_id) {
+            $task_repository->delete($task_id);
+        }
+        
+        // Обрабатываем каждое задание
+        foreach ($task_ids as $index => $task_id) {
+            // Получаем название задания
+            $task_title = isset($task_titles[$index]) ? sanitize_text_field($task_titles[$index]) : '';
+            
+            // Пропускаем пустые задания
+            if (empty($task_title)) {
+                continue;
+            }
+            
+            // Если ID задания равен 0, создаем новое задание
+            if ($task_id == 0) {
+                $task_data = array(
+                    'lesson_id' => $lesson_id,
+                    'title' => $task_title,
+                    'task_order' => $index,
+                    'created_at' => current_time('mysql'),
+                    'updated_at' => current_time('mysql')
+                );
+                $task_repository->create($task_data);
+            } 
+            // Иначе обновляем существующее задание
+            else {
+                $task_data = array(
+                    'title' => $task_title,
+                    'task_order' => $index,
+                    'updated_at' => current_time('mysql')
+                );
+                $task_repository->update($task_id, $task_data);
+            }
+        }
+        
+        return true;
     }
 
     /**

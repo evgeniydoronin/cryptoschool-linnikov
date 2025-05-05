@@ -306,7 +306,7 @@ abstract class CryptoSchool_Repository {
      *
      * @return string
      */
-    protected function getLastError() {
+    public function getLastError() {
         global $wpdb;
         return $wpdb->last_error;
     }

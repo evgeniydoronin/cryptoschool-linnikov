@@ -264,31 +264,205 @@ class CryptoSchool_Service_UserAccess extends CryptoSchool_Service {
      * @return int|false ID созданного доступа или false в случае ошибки
      */
     public function create($data) {
+        global $wpdb;
+        
+        // Проверка существования таблицы
+        $table_name = $this->repository->get_table_name();
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$table_name}'");
+        
+        if (!$table_exists) {
+            error_log('CryptoSchool_Service_UserAccess::create - Таблица ' . $table_name . ' не существует. Попытка создать таблицу...');
+            
+            // Создание таблицы
+            require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+            $charset_collate = $wpdb->get_charset_collate();
+            
+            $sql = "CREATE TABLE $table_name (
+                id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                user_id bigint(20) UNSIGNED NOT NULL,
+                package_id bigint(20) UNSIGNED NOT NULL,
+                access_start datetime NOT NULL,
+                access_end datetime DEFAULT NULL,
+                duration_months int(11) DEFAULT NULL,
+                status enum('active', 'expired') DEFAULT 'active',
+                telegram_status enum('none', 'invited', 'active', 'removed') DEFAULT 'none',
+                telegram_invite_link varchar(255) DEFAULT NULL,
+                telegram_invite_date datetime DEFAULT NULL,
+                created_at datetime DEFAULT CURRENT_TIMESTAMP,
+                updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                KEY user_id (user_id),
+                KEY package_id (package_id),
+                KEY status (status)
+            ) $charset_collate;";
+            
+            dbDelta($sql);
+            
+            // Проверка, создалась ли таблица
+            $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$table_name}'");
+            if (!$table_exists) {
+                error_log('CryptoSchool_Service_UserAccess::create - Не удалось создать таблицу ' . $table_name);
+                return false;
+            }
+            
+            error_log('CryptoSchool_Service_UserAccess::create - Таблица ' . $table_name . ' успешно создана');
+        }
+        
+        // Проверка наличия обязательных полей
+        if (!isset($data['user_id']) || !isset($data['package_id'])) {
+            error_log('CryptoSchool_Service_UserAccess::create - Отсутствуют обязательные поля user_id или package_id');
+            return false;
+        }
+
+        // Проверка существования пользователя
+        $user = get_userdata($data['user_id']);
+        if (!$user) {
+            error_log('CryptoSchool_Service_UserAccess::create - Пользователь с ID ' . $data['user_id'] . ' не найден');
+            return false;
+        }
+
+        // Проверка существования пакета
+        $package_service = new CryptoSchool_Service_Package($this->loader);
+        $package = $package_service->get_by_id($data['package_id']);
+        if (!$package) {
+            error_log('CryptoSchool_Service_UserAccess::create - Пакет с ID ' . $data['package_id'] . ' не найден');
+            return false;
+        }
+
+        // Проверка, есть ли уже доступ к этому пакету
+        $existing_access = $this->get_user_package_access($data['user_id'], $data['package_id']);
+        if ($existing_access) {
+            error_log('CryptoSchool_Service_UserAccess::create - У пользователя с ID ' . $data['user_id'] . ' уже есть доступ к пакету с ID ' . $data['package_id']);
+            
+            // Если доступ уже есть, но истек, можно его обновить
+            if ($existing_access->status === 'expired') {
+                $update_data = [
+                    'status' => 'active'
+                ];
+                
+                // Если указана продолжительность в месяцах, рассчитываем дату окончания
+                if (!empty($data['duration_months'])) {
+                    $start_date = isset($data['access_start']) ? new DateTime($data['access_start']) : new DateTime();
+                    $start_date->modify("+{$data['duration_months']} months");
+                    $update_data['access_end'] = $start_date->format('Y-m-d H:i:s');
+                    $update_data['access_start'] = isset($data['access_start']) ? $data['access_start'] : current_time('mysql');
+                } else {
+                    $update_data['access_end'] = null; // Пожизненный доступ
+                }
+                
+                // Обновляем существующий доступ
+                $result = $this->update($existing_access->id, $update_data);
+                
+                if ($result) {
+                    return $existing_access->id;
+                }
+            }
+            
+            return false;
+        }
+
         // Установка дат начала и окончания доступа
         if (!isset($data['access_start'])) {
             $data['access_start'] = current_time('mysql');
         }
 
+        // Создаем новый массив данных только с полями, которые есть в таблице
+        $insert_data = [
+            'user_id' => $data['user_id'],
+            'package_id' => $data['package_id'],
+            'access_start' => $data['access_start'],
+            'status' => isset($data['status']) ? $data['status'] : 'active',
+            'telegram_status' => isset($data['telegram_status']) ? $data['telegram_status'] : 'none',
+            'created_at' => current_time('mysql'),
+            'updated_at' => current_time('mysql')
+        ];
+
         // Если указана продолжительность в месяцах, рассчитываем дату окончания
         if (!empty($data['duration_months'])) {
             $start_date = new DateTime($data['access_start']);
             $start_date->modify("+{$data['duration_months']} months");
-            $data['access_end'] = $start_date->format('Y-m-d H:i:s');
+            $insert_data['access_end'] = $start_date->format('Y-m-d H:i:s');
         } else {
-            $data['access_end'] = null; // Пожизненный доступ
+            $insert_data['access_end'] = null; // Пожизненный доступ
         }
 
-        // Установка статуса доступа
-        if (!isset($data['status'])) {
-            $data['status'] = 'active';
+        // Добавляем duration_months в insert_data, если оно есть в data
+        if (isset($data['duration_months'])) {
+            $insert_data['duration_months'] = $data['duration_months'];
         }
 
-        // Установка статуса в Telegram
-        if (!isset($data['telegram_status'])) {
-            $data['telegram_status'] = 'none';
+        // Выводим SQL-запрос, который будет выполнен
+        $sql_query = "INSERT INTO $table_name (";
+        $sql_query .= implode(", ", array_keys($insert_data));
+        $sql_query .= ") VALUES (";
+        $placeholders = array();
+        foreach ($insert_data as $value) {
+            if (is_null($value)) {
+                $placeholders[] = "NULL";
+            } elseif (is_numeric($value)) {
+                $placeholders[] = $value;
+            } else {
+                $placeholders[] = "'" . esc_sql($value) . "'";
+            }
         }
-
-        return $this->repository->create($data);
+        $sql_query .= implode(", ", $placeholders);
+        $sql_query .= ")";
+        
+        error_log('CryptoSchool_Service_UserAccess::create - SQL-запрос: ' . $sql_query);
+        
+        // Прямая вставка в базу данных, минуя репозиторий
+        $result = $wpdb->insert($table_name, $insert_data);
+        
+        if ($result === false) {
+            error_log('CryptoSchool_Service_UserAccess::create - Не удалось создать доступ. Ошибка: ' . $wpdb->last_error);
+            
+            // Проверка, есть ли уже запись с такими user_id и package_id
+            $check_query = $wpdb->prepare(
+                "SELECT * FROM $table_name WHERE user_id = %d AND package_id = %d",
+                $data['user_id'],
+                $data['package_id']
+            );
+            error_log('CryptoSchool_Service_UserAccess::create - Проверка существующей записи: ' . $check_query);
+            
+            $existing_record = $wpdb->get_row($check_query);
+            if ($existing_record) {
+                error_log('CryptoSchool_Service_UserAccess::create - Найдена существующая запись: ' . json_encode($existing_record));
+                return false;
+            }
+            
+            // Проверка структуры таблицы
+            $table_structure_query = "DESCRIBE $table_name";
+            error_log('CryptoSchool_Service_UserAccess::create - Проверка структуры таблицы: ' . $table_structure_query);
+            
+            $table_structure = $wpdb->get_results($table_structure_query);
+            error_log('CryptoSchool_Service_UserAccess::create - Структура таблицы: ' . json_encode($table_structure));
+            
+            // Проверка, все ли поля существуют в таблице
+            $missing_fields = array();
+            foreach (array_keys($data) as $field) {
+                $field_exists = false;
+                foreach ($table_structure as $column) {
+                    if ($column->Field === $field) {
+                        $field_exists = true;
+                        break;
+                    }
+                }
+                if (!$field_exists) {
+                    $missing_fields[] = $field;
+                }
+            }
+            
+            if (!empty($missing_fields)) {
+                error_log('CryptoSchool_Service_UserAccess::create - Отсутствуют поля в таблице: ' . implode(', ', $missing_fields));
+            }
+            
+            return false;
+        }
+        
+        $access_id = $wpdb->insert_id;
+        error_log('CryptoSchool_Service_UserAccess::create - Доступ успешно создан с ID: ' . $access_id);
+        
+        return $access_id;
     }
 
     /**

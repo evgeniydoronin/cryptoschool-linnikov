@@ -5,6 +5,11 @@
  * @package CryptoSchool
  */
 
+// Подключение автозагрузчика Composer
+if (file_exists(dirname(__DIR__, 3) . '/vendor/autoload.php')) {
+    require_once dirname(__DIR__, 3) . '/vendor/autoload.php';
+}
+
 // Подключение файла кастомизации авторизации
 require_once get_template_directory() . '/inc/auth-customization.php';
 
@@ -68,6 +73,10 @@ function cryptoschool_create_pages() {
         'settings' => array(
             'title' => 'Налаштування',
             'template' => 'page-settings.php'
+        ),
+        'lesson' => array(
+            'title' => 'Урок',
+            'template' => 'page-lesson.php'
         )
     );
     

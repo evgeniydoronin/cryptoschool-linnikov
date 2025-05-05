@@ -294,7 +294,7 @@ class CryptoSchool_Repository_Course extends CryptoSchool_Repository {
 
         $query = "
             SELECT DISTINCT c.* FROM {$this->table_name} c
-            INNER JOIN {$packages_table} p ON FIND_IN_SET(c.id, p.course_ids)
+            INNER JOIN {$packages_table} p ON JSON_CONTAINS(p.course_ids, CONCAT('\"', c.id, '\"'))
             INNER JOIN {$access_table} a ON a.package_id = p.id
             WHERE a.user_id = %d AND a.status = 'active'
         ";
@@ -374,7 +374,7 @@ class CryptoSchool_Repository_Course extends CryptoSchool_Repository {
 
         $query = "
             SELECT COUNT(DISTINCT c.id) FROM {$this->table_name} c
-            INNER JOIN {$packages_table} p ON FIND_IN_SET(c.id, p.course_ids)
+            INNER JOIN {$packages_table} p ON JSON_CONTAINS(p.course_ids, CONCAT('\"', c.id, '\"'))
             INNER JOIN {$access_table} a ON a.package_id = p.id
             WHERE a.user_id = %d AND a.status = 'active'
         ";

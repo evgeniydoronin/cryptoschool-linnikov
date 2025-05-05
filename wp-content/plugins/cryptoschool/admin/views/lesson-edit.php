@@ -124,6 +124,124 @@ $is_active = $lesson ? $lesson->is_active : 1;
                             </div>
                         </div>
                     </div>
+                    
+                    <div id="lesson-tasks" class="postbox">
+                        <h2 class="hndle ui-sortable-handle"><span><?php _e('Задания урока', 'cryptoschool'); ?></span></h2>
+                        <div class="inside">
+                            <p class="description"><?php _e('Добавьте задания, которые студент должен выполнить для завершения урока.', 'cryptoschool'); ?></p>
+                            
+                            <div id="lesson-tasks-container">
+                                <?php
+                                // Получаем задания урока, если урок существует
+                                $tasks = [];
+                                if ($lesson_id) {
+                                    $task_repository = new CryptoSchool_Repository_Lesson_Task();
+                                    $tasks = $task_repository->get_lesson_tasks($lesson_id);
+                                }
+                                
+                                // Если заданий нет, создаем пустой шаблон
+                                if (empty($tasks)) {
+                                    ?>
+                                    <div class="lesson-task-item" data-task-id="0">
+                                        <div class="lesson-task-header">
+                                            <span class="lesson-task-number">1</span>
+                                            <button type="button" class="button button-small lesson-task-remove"><?php _e('Удалить', 'cryptoschool'); ?></button>
+                                        </div>
+                                        <div class="lesson-task-content">
+                                            <input type="hidden" name="task_ids[]" value="0">
+                                            <input type="text" name="task_titles[]" class="widefat" placeholder="<?php _e('Введите текст задания', 'cryptoschool'); ?>">
+                                        </div>
+                                    </div>
+                                    <?php
+                                } else {
+                                    // Выводим существующие задания
+                                    foreach ($tasks as $index => $task) {
+                                        ?>
+                                        <div class="lesson-task-item" data-task-id="<?php echo esc_attr($task->id); ?>">
+                                            <div class="lesson-task-header">
+                                                <span class="lesson-task-number"><?php echo esc_html($index + 1); ?></span>
+                                                <button type="button" class="button button-small lesson-task-remove"><?php _e('Удалить', 'cryptoschool'); ?></button>
+                                            </div>
+                                            <div class="lesson-task-content">
+                                                <input type="hidden" name="task_ids[]" value="<?php echo esc_attr($task->id); ?>">
+                                                <input type="text" name="task_titles[]" class="widefat" value="<?php echo esc_attr($task->title); ?>" placeholder="<?php _e('Введите текст задания', 'cryptoschool'); ?>">
+                                            </div>
+                                        </div>
+                                        <?php
+                                    }
+                                }
+                                ?>
+                            </div>
+                            
+                            <div class="lesson-task-actions">
+                                <button type="button" id="add-lesson-task" class="button"><?php _e('Добавить задание', 'cryptoschool'); ?></button>
+                            </div>
+                            
+                            <style>
+                                #lesson-tasks-container {
+                                    margin-bottom: 15px;
+                                }
+                                .lesson-task-item {
+                                    background: #f9f9f9;
+                                    border: 1px solid #ddd;
+                                    margin-bottom: 10px;
+                                    padding: 10px;
+                                    border-radius: 3px;
+                                }
+                                .lesson-task-header {
+                                    display: flex;
+                                    justify-content: space-between;
+                                    align-items: center;
+                                    margin-bottom: 10px;
+                                }
+                                .lesson-task-number {
+                                    font-weight: bold;
+                                }
+                                .lesson-task-content {
+                                    margin-bottom: 5px;
+                                }
+                                .lesson-task-actions {
+                                    margin-top: 15px;
+                                }
+                            </style>
+                            
+                            <script>
+                                jQuery(document).ready(function($) {
+                                    // Добавление нового задания
+                                    $('#add-lesson-task').on('click', function() {
+                                        var taskCount = $('.lesson-task-item').length;
+                                        var newTask = `
+                                            <div class="lesson-task-item" data-task-id="0">
+                                                <div class="lesson-task-header">
+                                                    <span class="lesson-task-number">${taskCount + 1}</span>
+                                                    <button type="button" class="button button-small lesson-task-remove"><?php _e('Удалить', 'cryptoschool'); ?></button>
+                                                </div>
+                                                <div class="lesson-task-content">
+                                                    <input type="hidden" name="task_ids[]" value="0">
+                                                    <input type="text" name="task_titles[]" class="widefat" placeholder="<?php _e('Введите текст задания', 'cryptoschool'); ?>">
+                                                </div>
+                                            </div>
+                                        `;
+                                        $('#lesson-tasks-container').append(newTask);
+                                        updateTaskNumbers();
+                                    });
+                                    
+                                    // Удаление задания
+                                    $(document).on('click', '.lesson-task-remove', function() {
+                                        $(this).closest('.lesson-task-item').remove();
+                                        updateTaskNumbers();
+                                    });
+                                    
+                                    // Обновление нумерации заданий
+                                    function updateTaskNumbers() {
+                                        $('.lesson-task-item').each(function(index) {
+                                            $(this).find('.lesson-task-number').text(index + 1);
+                                        });
+                                    }
+                                });
+                            </script>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

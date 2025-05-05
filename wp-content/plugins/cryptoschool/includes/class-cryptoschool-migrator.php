@@ -81,6 +81,7 @@ class CryptoSchool_Migrator {
             '1.0.1' => [$this, 'migration_1_0_1'],
             '1.0.2' => [$this, 'migration_1_0_2'],
             '1.0.3' => [$this, 'migration_1_0_3'],
+            '1.0.4' => [$this, 'migration_1_0_4'],
             // Добавьте здесь другие миграции
         ];
     }
@@ -159,6 +160,25 @@ class CryptoSchool_Migrator {
 
         // Логирование миграции
         $this->log_migration('1.0.3');
+    }
+
+    /**
+     * Миграция для версии 1.0.4
+     *
+     * @return void
+     */
+    public function migration_1_0_4() {
+        // Подключаем класс миграции для создания таблиц заданий уроков
+        require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/migrations/class-cryptoschool-migration-lesson-tasks.php';
+        
+        // Создаем экземпляр класса миграции
+        $migration = new CryptoSchool_Migration_Lesson_Tasks();
+        
+        // Запускаем миграцию
+        $migration->run();
+        
+        // Логирование миграции
+        $this->log_migration('1.0.4');
     }
 
     /**

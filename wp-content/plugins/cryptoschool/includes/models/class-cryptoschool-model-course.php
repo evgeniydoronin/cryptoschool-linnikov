@@ -83,9 +83,21 @@ class CryptoSchool_Model_Course extends CryptoSchool_Model {
      * @return bool
      */
     public function is_available_for_user($user_id) {
+        // Если пользователь администратор, всегда даем доступ
+        if (user_can($user_id, 'administrator')) {
+            return true;
+        }
+        
         $repository = new CryptoSchool_Repository_UserAccess();
         $access = $repository->get_user_course_access($user_id, $this->getAttribute('id'));
-        return !empty($access);
+        
+        // Проверяем не только наличие доступа, но и его статус
+        if (empty($access)) {
+            return false;
+        }
+        
+        // Проверяем статус доступа
+        return $access->getAttribute('status') === 'active';
     }
 
     /**
