@@ -115,22 +115,49 @@ class CryptoSchool_Activator {
             PRIMARY KEY (id)
         ) $charset_collate;";
 
-        // Таблица прогресса пользователя
-        $table_name = $wpdb->prefix . 'cryptoschool_user_progress';
+        // Таблица заданий урока
+        $table_name = $wpdb->prefix . 'cryptoschool_lesson_tasks';
+        $sql_queries[] = "CREATE TABLE $table_name (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            lesson_id bigint(20) UNSIGNED NOT NULL,
+            title text COLLATE utf8mb4_unicode_ci NOT NULL,
+            task_order int(11) NOT NULL DEFAULT 0,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            KEY lesson_id (lesson_id)
+        ) $charset_collate;";
+
+        // Таблица прогресса пользователя по урокам
+        $table_name = $wpdb->prefix . 'cryptoschool_user_lesson_progress';
         $sql_queries[] = "CREATE TABLE $table_name (
             id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             user_id bigint(20) UNSIGNED NOT NULL,
             lesson_id bigint(20) UNSIGNED NOT NULL,
-            status enum('not_started', 'in_progress', 'completed') DEFAULT 'not_started',
-            completion_date datetime DEFAULT NULL,
-            points int(11) DEFAULT 0,
-            completed_tasks longtext,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            is_completed tinyint(1) NOT NULL DEFAULT 0,
+            progress_percent int(11) NOT NULL DEFAULT 0,
+            completed_at datetime DEFAULT NULL,
+            updated_at datetime NOT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY user_lesson (user_id, lesson_id),
             KEY user_id (user_id),
             KEY lesson_id (lesson_id)
+        ) $charset_collate;";
+
+        // Таблица прогресса пользователя по заданиям
+        $table_name = $wpdb->prefix . 'cryptoschool_user_task_progress';
+        $sql_queries[] = "CREATE TABLE $table_name (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) UNSIGNED NOT NULL,
+            lesson_id bigint(20) UNSIGNED NOT NULL,
+            task_id bigint(20) UNSIGNED NOT NULL,
+            is_completed tinyint(1) NOT NULL DEFAULT 0,
+            completed_at datetime DEFAULT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY user_task (user_id, task_id),
+            KEY user_id (user_id),
+            KEY lesson_id (lesson_id),
+            KEY task_id (task_id)
         ) $charset_collate;";
 
         // Таблица доступов пользователя

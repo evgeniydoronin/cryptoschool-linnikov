@@ -109,7 +109,7 @@ class CryptoSchool_Model_Course extends CryptoSchool_Model {
     public function get_user_progress($user_id) {
         global $wpdb;
         $lessons_table = $wpdb->prefix . 'cryptoschool_lessons';
-        $progress_table = $wpdb->prefix . 'cryptoschool_user_progress';
+        $progress_table = $wpdb->prefix . 'cryptoschool_user_lesson_progress';
 
         // Получение общего количества уроков в курсе
         $total_lessons_query = $wpdb->prepare(
@@ -126,7 +126,7 @@ class CryptoSchool_Model_Course extends CryptoSchool_Model {
         $completed_lessons_query = $wpdb->prepare(
             "SELECT COUNT(*) FROM {$progress_table} p
             INNER JOIN {$lessons_table} l ON p.lesson_id = l.id
-            WHERE p.user_id = %d AND p.status = 'completed'
+            WHERE p.user_id = %d AND p.is_completed = 1
             AND l.course_id = %d AND l.is_active = 1",
             $user_id,
             $this->getAttribute('id')
@@ -146,17 +146,22 @@ class CryptoSchool_Model_Course extends CryptoSchool_Model {
     public function get_user_points($user_id) {
         global $wpdb;
         $lessons_table = $wpdb->prefix . 'cryptoschool_lessons';
-        $progress_table = $wpdb->prefix . 'cryptoschool_user_progress';
+        $progress_table = $wpdb->prefix . 'cryptoschool_user_lesson_progress';
 
+        // Получаем все завершенные уроки курса
         $query = $wpdb->prepare(
-            "SELECT SUM(p.points) FROM {$progress_table} p
+            "SELECT l.completion_points FROM {$progress_table} p
             INNER JOIN {$lessons_table} l ON p.lesson_id = l.id
-            WHERE p.user_id = %d AND l.course_id = %d",
+            WHERE p.user_id = %d AND p.is_completed = 1
+            AND l.course_id = %d AND l.is_active = 1",
             $user_id,
             $this->getAttribute('id')
         );
 
-        return (int) $wpdb->get_var($query);
+        $points = $wpdb->get_col($query);
+        
+        // Суммируем баллы за все завершенные уроки
+        return array_sum($points);
     }
 
     /**

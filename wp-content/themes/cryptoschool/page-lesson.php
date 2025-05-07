@@ -16,43 +16,37 @@ if (!is_user_logged_in()) {
     exit;
 }
 
-get_header();
-
 // Получаем ID урока из GET-параметра
 $lesson_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
 // Получаем текущего пользователя
 $current_user_id = get_current_user_id();
 
+// Инициализируем сервис доступности
+$loader = new CryptoSchool_Loader();
+$accessibility_service = new CryptoSchool_Service_Accessibility($loader);
+
+// Проверяем доступность урока для пользователя
+$accessibility_result = $accessibility_service->check_lesson_accessibility($current_user_id, $lesson_id);
+
+// Если урок недоступен, перенаправляем на соответствующую страницу
+if (!$accessibility_result['accessible']) {
+    wp_redirect($accessibility_result['redirect_url']);
+    exit;
+}
+
 // Получаем данные урока из базы данных
 $lesson_repository = new CryptoSchool_Repository_Lesson();
 $lesson_model = $lesson_repository->find($lesson_id);
-
-// Если урок не найден, перенаправляем на страницу списка курсов
-if (!$lesson_model) {
-    wp_redirect(site_url('/courses/'));
-    exit;
-}
 
 // Получаем данные курса
 $course_repository = new CryptoSchool_Repository_Course();
 $course_model = $course_repository->find($lesson_model->getAttribute('course_id'));
 
-// Если курс не найден, перенаправляем на страницу списка курсов
-if (!$course_model) {
-    wp_redirect(site_url('/courses/'));
-    exit;
-}
-
-// Проверяем доступность курса для пользователя
-$is_course_available = $course_model->is_available_for_user($current_user_id);
-if (!$is_course_available) {
-    wp_redirect(site_url('/courses/'));
-    exit;
-}
+// Инициализируем репозиторий прогресса пользователя
+$user_lesson_progress_repository = new CryptoSchool_Repository_User_Lesson_Progress();
 
 // Получаем прогресс пользователя по уроку
-$user_lesson_progress_repository = new CryptoSchool_Repository_User_Lesson_Progress();
 $user_progress = $user_lesson_progress_repository->get_user_lesson_progress($current_user_id, $lesson_id);
 
 // Получаем задания урока
@@ -140,6 +134,9 @@ foreach ($user_task_progress as $is_completed) {
 
 // Определяем, завершен ли урок
 $is_lesson_completed = $user_progress ? $user_progress->is_completed : false;
+
+// Теперь, когда все проверки и перенаправления выполнены, подключаем header
+get_header();
 ?>
 
 <main>
@@ -160,11 +157,14 @@ $is_lesson_completed = $user_progress ? $user_progress->is_completed : false;
                             <div class="account-article__header-column">
                                 <h6 class="text-small account-article__pretitle">
                                     <?php 
-                                    // Получаем название модуля
-                                    $module_title = $lesson_model->getAttribute('module_title') ?: __('Модуль', 'cryptoschool');
-                                    $module_number = $lesson_model->getAttribute('module_order') ?: 1;
-                                    echo esc_html($module_title . ' ' . $module_number); 
+                                    // Модуль - это курс, выводим название курса со ссылкой на страницу курса
+                                    $course_id = $course_model->getAttribute('id');
+                                    $course_title = $course_model->getAttribute('title');
+                                    $course_url = site_url('/course/?id=' . $course_id);
                                     ?>
+                                    <a href="<?php echo esc_url($course_url); ?>" class="color-primary">
+                                        <?php echo esc_html($course_title); ?>
+                                    </a>
                                 </h6>
                                 <h5 class="h6 color-primary account-article__title">
                                     <?php echo esc_html($lesson_model->getAttribute('title')); ?>
@@ -279,28 +279,34 @@ $is_lesson_completed = $user_progress ? $user_progress->is_completed : false;
                     <!-- Навигация между уроками -->
                     <div class="bottom-navigation">
                         <?php if ($prev_lesson) : ?>
+                            <!-- Если есть предыдущий урок, показываем кнопку "Попередній урок" -->
                             <a href="<?php echo esc_url(site_url('/lesson/?id=' . $prev_lesson->getAttribute('id'))); ?>" class="bottom-navigation__item bottom-navigation__previous">
                                 <div class="bottom-navigation__arrow">
                                     <span class="icon-nav-arrow-left"></span>
                                 </div>
                                 <div class="bottom-navigation__label text-small"><?php _e('Попередній урок', 'cryptoschool'); ?></div>
                             </a>
-                        <?php else: ?>
-                            <a href="<?php echo esc_url(site_url('/course/?id=' . $course_model->getAttribute('id'))); ?>" class="bottom-navigation__item bottom-navigation__previous hide-mobile">
-                                <div class="bottom-navigation__arrow">
-                                    <span class="icon-nav-arrow-left"></span>
-                                </div>
-                                <div class="bottom-navigation__label text-small"><?php _e('До курсу', 'cryptoschool'); ?></div>
-                            </a>
                         <?php endif; ?>
                         
                         <?php if ($next_lesson) : ?>
-                            <a href="<?php echo esc_url(site_url('/lesson/?id=' . $next_lesson->getAttribute('id'))); ?>" class="bottom-navigation__item bottom-navigation__next">
-                                <div class="bottom-navigation__label text-small"><?php _e('Наступний урок', 'cryptoschool'); ?></div>
-                                <div class="bottom-navigation__arrow">
-                                    <span class="icon-nav-arrow-right"></span>
+                            <!-- Если есть следующий урок, показываем кнопку "Наступний урок" -->
+                            <?php if ($is_lesson_completed) : ?>
+                                <!-- Если текущий урок пройден, делаем ссылку активной -->
+                                <a href="<?php echo esc_url(site_url('/lesson/?id=' . $next_lesson->getAttribute('id'))); ?>" class="bottom-navigation__item bottom-navigation__next">
+                                    <div class="bottom-navigation__label text-small"><?php _e('Наступний урок', 'cryptoschool'); ?></div>
+                                    <div class="bottom-navigation__arrow">
+                                        <span class="icon-nav-arrow-right"></span>
+                                    </div>
+                                </a>
+                            <?php else : ?>
+                                <!-- Если текущий урок не пройден, делаем ссылку неактивной -->
+                                <div class="bottom-navigation__item bottom-navigation__next bottom-navigation__item_disabled">
+                                    <div class="bottom-navigation__label text-small"><?php _e('Наступний урок', 'cryptoschool'); ?></div>
+                                    <div class="bottom-navigation__arrow">
+                                        <span class="icon-nav-arrow-right"></span>
+                                    </div>
                                 </div>
-                            </a>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -316,27 +322,47 @@ jQuery(document).ready(function($) {
     const taskCheckboxes = $('.checkbox__input');
     const submitButton = $('#lesson-tasks-form button[type="submit"]');
     
+    // Проверяем, завершен ли урок
+    const isLessonCompleted = <?php echo $is_lesson_completed ? 'true' : 'false'; ?>;
+    
     // Функция проверки, все ли задания выполнены
     function checkAllTasksCompleted() {
-        let allCompleted = true;
-        taskCheckboxes.each(function() {
-            if (!$(this).prop('checked')) {
-                allCompleted = false;
-                return false; // Прерываем цикл
-            }
-        });
-        
-        // Если урок уже завершен, кнопка всегда неактивна
-        if (submitButton.prop('disabled')) {
+        // Если урок уже завершен, не меняем состояние кнопки
+        if (isLessonCompleted) {
             return;
         }
         
+        let allCompleted = true;
+        let totalCheckboxes = 0;
+        let checkedCheckboxes = 0;
+        
+        // Проверяем каждый чекбокс
+        taskCheckboxes.each(function() {
+            totalCheckboxes++;
+            if ($(this).prop('checked')) {
+                checkedCheckboxes++;
+            } else {
+                allCompleted = false;
+            }
+        });
+        
+        console.log('Всего заданий: ' + totalCheckboxes + ', Выполнено: ' + checkedCheckboxes);
+        
         // Активируем/деактивируем кнопку в зависимости от выполнения всех заданий
-        if (allCompleted) {
+        if (allCompleted && totalCheckboxes > 0) {
             submitButton.prop('disabled', false);
+            submitButton.removeClass('button_disabled');
         } else {
             submitButton.prop('disabled', true);
+            submitButton.addClass('button_disabled');
         }
+    }
+    
+    // Инициализация кнопки при загрузке страницы
+    if (!isLessonCompleted) {
+        // По умолчанию кнопка неактивна, если не все задания выполнены
+        submitButton.prop('disabled', true);
+        submitButton.addClass('button_disabled');
     }
     
     // Проверяем при загрузке страницы
@@ -348,5 +374,41 @@ jQuery(document).ready(function($) {
     });
 });
 </script>
+
+<style>
+/* Стили для неактивной кнопки */
+.button_disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Стили для сообщений */
+.lesson__message {
+    padding: 10px 15px;
+    margin-bottom: 15px;
+    border-radius: 5px;
+    font-size: 14px;
+}
+
+.lesson__message_success {
+    background-color: rgba(52, 199, 89, 0.1);
+    color: #34c759;
+    border: 1px solid rgba(52, 199, 89, 0.2);
+}
+
+.lesson__message_error {
+    background-color: rgba(255, 59, 48, 0.1);
+    color: #ff3b30;
+    border: 1px solid rgba(255, 59, 48, 0.2);
+}
+
+/* Стили для неактивной кнопки навигации */
+.bottom-navigation__item_disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+</style>
 
 <?php get_footer(); ?>

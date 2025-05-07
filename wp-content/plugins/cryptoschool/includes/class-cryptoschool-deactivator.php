@@ -70,7 +70,9 @@ class CryptoSchool_Deactivator {
             'cryptoschool_modules',
             'cryptoschool_lessons',
             'cryptoschool_packages',
-            'cryptoschool_user_progress',
+            'cryptoschool_lesson_tasks', // Таблица заданий урока
+            'cryptoschool_user_lesson_progress', // Таблица прогресса по урокам
+            'cryptoschool_user_task_progress', // Таблица прогресса по заданиям
             'cryptoschool_user_access',
             'cryptoschool_referral_links',
             'cryptoschool_referral_users',

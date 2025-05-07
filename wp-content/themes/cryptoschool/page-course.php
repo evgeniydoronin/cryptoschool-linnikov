@@ -24,40 +24,38 @@ $course_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 // Получаем текущего пользователя
 $current_user_id = get_current_user_id();
 
+// Инициализируем сервис доступности
+$loader = new CryptoSchool_Loader();
+$accessibility_service = new CryptoSchool_Service_Accessibility($loader);
+
+// Проверяем доступность курса для пользователя
+$accessibility_result = $accessibility_service->check_course_accessibility($current_user_id, $course_id);
+
+// Если курс недоступен, перенаправляем на соответствующую страницу
+if (!$accessibility_result['accessible']) {
+    wp_redirect($accessibility_result['redirect_url']);
+    exit;
+}
+
 // Получаем данные курса из базы данных
 $course_repository = new CryptoSchool_Repository_Course();
 $course_model = $course_repository->find($course_id);
 
-// Если курс не найден, перенаправляем на страницу списка курсов
-if (!$course_model) {
-    wp_redirect(site_url('/courses/'));
-    exit;
-}
-
-// Проверяем доступность курса для пользователя
-$is_available = $course_model->is_available_for_user($current_user_id);
-if (!$is_available) {
-    wp_redirect(site_url('/courses/'));
-    exit;
-}
-
 // Получаем уроки курса
 $lessons = $course_model->get_lessons();
 
-// Группируем уроки по модулям
-$modules = [];
+// Организуем уроки в группы для отображения
+$lesson_groups = [];
 foreach ($lessons as $lesson) {
-    $module_id = $lesson->getAttribute('module_id');
-    $module_title = $lesson->getAttribute('module_title') ?: __('Модуль без названия', 'cryptoschool');
-    $module_number = $lesson->getAttribute('module_order') ?: 1;
+    $group_id = $lesson->getAttribute('module_id') ?: 0; // Используем module_id как идентификатор группы
+    $group_title = $lesson->getAttribute('module_title') ?: __('Уроки курса', 'cryptoschool');
     
-    if (!isset($modules[$module_id])) {
-        $modules[$module_id] = [
-            'id' => $module_id,
-            'title' => $module_title,
-            'number' => $module_number,
+    if (!isset($lesson_groups[$group_id])) {
+        $lesson_groups[$group_id] = [
+            'id' => $group_id,
+            'title' => $group_title,
             'lessons_count' => 0,
-            'opened' => true, // По умолчанию модуль открыт
+            'opened' => true, // По умолчанию группа открыта
             'lessons' => []
         ];
     }
@@ -73,17 +71,17 @@ foreach ($lessons as $lesson) {
     $lesson_progress = $user_progress ? $user_progress->getAttribute('progress_percent') : 0;
     $is_completed = $user_progress ? $user_progress->getAttribute('is_completed') : false;
     
-    // Проверяем, является ли это первым уроком в модуле
+    // Проверяем, является ли это первым уроком в группе
     $is_first_lesson = false;
-    if (count($modules[$module_id]['lessons']) === 0) {
+    if (count($lesson_groups[$group_id]['lessons']) === 0) {
         $is_first_lesson = true;
     }
     
     // Проверяем, завершен ли предыдущий урок
     $prev_lesson_completed = true;
-    if (!$is_first_lesson && count($modules[$module_id]['lessons']) > 0) {
-        $last_lesson_index = count($modules[$module_id]['lessons']) - 1;
-        $prev_lesson_id = $modules[$module_id]['lessons'][$last_lesson_index]['id'];
+    if (!$is_first_lesson && count($lesson_groups[$group_id]['lessons']) > 0) {
+        $last_lesson_index = count($lesson_groups[$group_id]['lessons']) - 1;
+        $prev_lesson_id = $lesson_groups[$group_id]['lessons'][$last_lesson_index]['id'];
         $prev_lesson_progress = $user_lesson_progress_repository->get_user_lesson_progress($current_user_id, $prev_lesson_id);
         $prev_lesson_completed = $prev_lesson_progress ? $prev_lesson_progress->getAttribute('is_completed') : false;
     }
@@ -92,7 +90,7 @@ foreach ($lessons as $lesson) {
     if ($is_first_lesson || $prev_lesson_completed) {
         if ($is_completed) {
             $lesson_status = 'done';
-            $lesson_status_text = __('виконаний', 'cryptoschool');
+            $lesson_status_text = __('Виконаний', 'cryptoschool');
         } elseif ($lesson_progress > 0) {
             $lesson_status = 'in-process';
             $lesson_status_text = __('У процесі', 'cryptoschool');
@@ -102,27 +100,27 @@ foreach ($lessons as $lesson) {
         }
     }
     
-    // Добавляем урок в модуль
-    $modules[$module_id]['lessons'][] = [
+    // Добавляем урок в группу
+    $lesson_groups[$group_id]['lessons'][] = [
         'id' => $lesson->getAttribute('id'),
-        'number' => $lesson->getAttribute('lesson_order') ?: count($modules[$module_id]['lessons']) + 1,
+        'number' => $lesson->getAttribute('lesson_order') ?: count($lesson_groups[$group_id]['lessons']) + 1,
         'title' => $lesson->getAttribute('title'),
         'status' => $lesson_status,
         'status_text' => $lesson_status_text
     ];
     
-    // Увеличиваем счетчик уроков в модуле
-    $modules[$module_id]['lessons_count']++;
+    // Увеличиваем счетчик уроков в группе
+    $lesson_groups[$group_id]['lessons_count']++;
 }
 
-// Сортируем модули по номеру
-usort($modules, function($a, $b) {
-    return $a['number'] <=> $b['number'];
+// Сортируем группы уроков
+usort($lesson_groups, function($a, $b) {
+    return ($a['id'] ?? 0) <=> ($b['id'] ?? 0);
 });
 
-// Сортируем уроки внутри каждого модуля по номеру
-foreach ($modules as &$module) {
-    usort($module['lessons'], function($a, $b) {
+// Сортируем уроки внутри каждой группы по номеру
+foreach ($lesson_groups as &$group) {
+    usort($group['lessons'], function($a, $b) {
         return $a['number'] <=> $b['number'];
     });
 }
@@ -145,18 +143,18 @@ foreach ($modules as &$module) {
         <h5 class="h5 color-primary study__title"><?php echo esc_html($course_model->getAttribute('title')); ?></h5>
 
         <div class="study__modules">
-            <?php if (empty($modules)) : ?>
-                <p class="text-small"><?php _e('Модули не найдены', 'cryptoschool'); ?></p>
+            <?php if (empty($lesson_groups)) : ?>
+                <p class="text-small"><?php _e('Уроки не найдены', 'cryptoschool'); ?></p>
             <?php else : ?>
-                <?php foreach ($modules as $module) : ?>
-                    <div class="palette palette_blurred study-module <?php echo $module['opened'] ? 'study-module_opened' : ''; ?>">
+                <?php foreach ($lesson_groups as $group) : ?>
+                    <div class="palette palette_blurred study-module <?php echo $group['opened'] ? 'study-module_opened' : ''; ?>">
                         <div class="study-module__summary">
                             <div class="study-module__left">
-                                <div class="study-module__number text">Модуль <?php echo esc_html($module['number']); ?></div>
-                                <div class="study-module__name text color-primary"><?php echo esc_html($module['title']); ?></div>
+                                <div class="study-module__number text"><?php echo esc_html($course_model->getAttribute('title')); ?></div>
+                                <div class="study-module__name text color-primary"><?php echo esc_html($group['title']); ?></div>
                             </div>
                             <div class="study-module__right">
-                                <div class="study-module__amount text"><?php echo esc_html($module['lessons_count']); ?> уроків</div>
+                                <div class="study-module__amount text"><?php echo esc_html($group['lessons_count']); ?> уроків</div>
                                 <div class="study-module__toggler">
                                     <span class="icon-nav-arrow-right"></span>
                                 </div>
@@ -164,10 +162,10 @@ foreach ($modules as &$module) {
                         </div>
                         <div class="study-module__dropdown">
                             <div class="study-module__lessons">
-                                <?php if (empty($module['lessons'])) : ?>
+                                <?php if (empty($group['lessons'])) : ?>
                                     <p class="text-small"><?php _e('Уроки не найдены', 'cryptoschool'); ?></p>
                                 <?php else : ?>
-                                    <?php foreach ($module['lessons'] as $lesson) : ?>
+                                    <?php foreach ($group['lessons'] as $lesson) : ?>
                                         <div class="study-module__lesson study-module__lesson_<?php echo esc_attr($lesson['status']); ?>">
                                             <?php if ($lesson['status'] === 'done') : ?>
                                                 <div class="study-module__lesson-check">
@@ -225,13 +223,13 @@ foreach ($modules as &$module) {
                     <div class="bottom-navigation__arrow">
                         <span class="icon-nav-arrow-left"></span>
                     </div>
-                    <div class="bottom-navigation__label text-small">Попередній модуль</div>
+                    <div class="bottom-navigation__label text-small">Попередній курс</div>
                 </a>
             <?php endif; ?>
             
             <?php if ($next_course) : ?>
                 <a href="<?php echo esc_url(site_url('/course/?id=' . $next_course->getAttribute('id'))); ?>" class="bottom-navigation__item bottom-navigation__next">
-                    <div class="bottom-navigation__label text-small">Наступний модуль</div>
+                    <div class="bottom-navigation__label text-small">Наступний курс</div>
                     <div class="bottom-navigation__arrow">
                         <span class="icon-nav-arrow-right"></span>
                     </div>

@@ -187,16 +187,34 @@ class CryptoSchool_Service_Lesson extends CryptoSchool_Service {
      */
     public function get_user_progress($lesson_id, $user_id) {
         global $wpdb;
-        $progress_table = $wpdb->prefix . 'cryptoschool_user_progress';
+        $progress_table = $wpdb->prefix . 'cryptoschool_user_lesson_progress';
+        $task_progress_table = $wpdb->prefix . 'cryptoschool_user_task_progress';
 
+        // Получаем прогресс по уроку
         $query = $wpdb->prepare(
             "SELECT * FROM {$progress_table} WHERE user_id = %d AND lesson_id = %d",
             $user_id,
             $lesson_id
         );
-        $result = $wpdb->get_row($query, ARRAY_A);
+        $progress = $wpdb->get_row($query, ARRAY_A);
 
-        return $result ? $result : null;
+        if (!$progress) {
+            return null;
+        }
+
+        // Получаем выполненные задания
+        $query = $wpdb->prepare(
+            "SELECT task_id FROM {$task_progress_table} 
+            WHERE user_id = %d AND lesson_id = %d AND is_completed = 1",
+            $user_id,
+            $lesson_id
+        );
+
+        $completed_task_ids = $wpdb->get_col($query);
+
+        $progress['completed_tasks'] = $completed_task_ids;
+
+        return $progress;
     }
 
     /**
@@ -208,13 +226,16 @@ class CryptoSchool_Service_Lesson extends CryptoSchool_Service {
      */
     public function mark_as_completed($lesson_id, $user_id) {
         global $wpdb;
-        $progress_table = $wpdb->prefix . 'cryptoschool_user_progress';
+        $progress_table = $wpdb->prefix . 'cryptoschool_user_lesson_progress';
 
         // Получение урока для получения баллов
         $lesson = $this->get_by_id($lesson_id);
         if (!$lesson) {
             return false;
         }
+
+        // Текущее время
+        $current_time = current_time('mysql');
 
         // Проверка, есть ли уже запись о прогрессе
         $existing_progress = $this->get_user_progress($lesson_id, $user_id);
@@ -224,9 +245,10 @@ class CryptoSchool_Service_Lesson extends CryptoSchool_Service {
             $result = $wpdb->update(
                 $progress_table,
                 [
-                    'status' => 'completed',
-                    'completion_date' => current_time('mysql'),
-                    'points' => $lesson->completion_points,
+                    'is_completed' => 1,
+                    'progress_percent' => 100,
+                    'completed_at' => $current_time,
+                    'updated_at' => $current_time,
                 ],
                 [
                     'user_id' => $user_id,
@@ -240,9 +262,10 @@ class CryptoSchool_Service_Lesson extends CryptoSchool_Service {
                 [
                     'user_id' => $user_id,
                     'lesson_id' => $lesson_id,
-                    'status' => 'completed',
-                    'completion_date' => current_time('mysql'),
-                    'points' => $lesson->completion_points,
+                    'is_completed' => 1,
+                    'progress_percent' => 100,
+                    'completed_at' => $current_time,
+                    'updated_at' => $current_time,
                 ]
             );
         }
@@ -264,18 +287,23 @@ class CryptoSchool_Service_Lesson extends CryptoSchool_Service {
     public function update_user_leaderboard($user_id) {
         global $wpdb;
         $leaderboard_table = $wpdb->prefix . 'cryptoschool_user_leaderboard';
-        $progress_table = $wpdb->prefix . 'cryptoschool_user_progress';
+        $progress_table = $wpdb->prefix . 'cryptoschool_user_lesson_progress';
+        $lessons_table = $wpdb->prefix . 'cryptoschool_lessons';
 
         // Получение общего количества баллов
+        // Баллы рассчитываются как сумма completion_points для всех завершенных уроков
         $total_points_query = $wpdb->prepare(
-            "SELECT SUM(points) FROM {$progress_table} WHERE user_id = %d",
+            "SELECT SUM(l.completion_points) 
+            FROM {$progress_table} p
+            INNER JOIN {$lessons_table} l ON p.lesson_id = l.id
+            WHERE p.user_id = %d AND p.is_completed = 1",
             $user_id
         );
         $total_points = (int) $wpdb->get_var($total_points_query);
 
         // Получение количества завершенных уроков
         $completed_lessons_query = $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$progress_table} WHERE user_id = %d AND status = 'completed'",
+            "SELECT COUNT(*) FROM {$progress_table} WHERE user_id = %d AND is_completed = 1",
             $user_id
         );
         $completed_lessons = (int) $wpdb->get_var($completed_lessons_query);

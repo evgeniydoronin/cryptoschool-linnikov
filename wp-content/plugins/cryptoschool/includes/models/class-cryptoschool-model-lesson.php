@@ -154,17 +154,17 @@ class CryptoSchool_Model_Lesson extends CryptoSchool_Model {
      */
     public function is_completed_by_user($user_id) {
         global $wpdb;
-        $progress_table = $wpdb->prefix . 'cryptoschool_user_progress';
+        $progress_table = $wpdb->prefix . 'cryptoschool_user_lesson_progress';
 
         $query = $wpdb->prepare(
-            "SELECT status FROM {$progress_table} WHERE user_id = %d AND lesson_id = %d",
+            "SELECT is_completed FROM {$progress_table} WHERE user_id = %d AND lesson_id = %d",
             $user_id,
             $this->id
         );
 
-        $status = $wpdb->get_var($query);
+        $is_completed = $wpdb->get_var($query);
 
-        return $status === 'completed';
+        return (bool) $is_completed;
     }
 
     /**
@@ -175,8 +175,10 @@ class CryptoSchool_Model_Lesson extends CryptoSchool_Model {
      */
     public function get_user_progress($user_id) {
         global $wpdb;
-        $progress_table = $wpdb->prefix . 'cryptoschool_user_progress';
+        $progress_table = $wpdb->prefix . 'cryptoschool_user_lesson_progress';
+        $task_progress_table = $wpdb->prefix . 'cryptoschool_user_task_progress';
 
+        // Получаем прогресс по уроку
         $query = $wpdb->prepare(
             "SELECT * FROM {$progress_table} WHERE user_id = %d AND lesson_id = %d",
             $user_id,
@@ -187,16 +189,24 @@ class CryptoSchool_Model_Lesson extends CryptoSchool_Model {
 
         if (!$progress) {
             return [
-                'status' => 'not_started',
-                'completion_date' => null,
-                'points' => 0,
+                'is_completed' => false,
+                'progress_percent' => 0,
+                'completed_at' => null,
                 'completed_tasks' => [],
             ];
         }
 
-        $progress['completed_tasks'] = !empty($progress['completed_tasks'])
-            ? json_decode($progress['completed_tasks'], true)
-            : [];
+        // Получаем выполненные задания
+        $query = $wpdb->prepare(
+            "SELECT task_id FROM {$task_progress_table} 
+            WHERE user_id = %d AND lesson_id = %d AND is_completed = 1",
+            $user_id,
+            $this->id
+        );
+
+        $completed_task_ids = $wpdb->get_col($query);
+
+        $progress['completed_tasks'] = $completed_task_ids;
 
         return $progress;
     }
@@ -209,7 +219,7 @@ class CryptoSchool_Model_Lesson extends CryptoSchool_Model {
      */
     public function mark_as_viewed_by_user($user_id) {
         global $wpdb;
-        $progress_table = $wpdb->prefix . 'cryptoschool_user_progress';
+        $progress_table = $wpdb->prefix . 'cryptoschool_user_lesson_progress';
 
         $query = $wpdb->prepare(
             "SELECT id FROM {$progress_table} WHERE user_id = %d AND lesson_id = %d",
@@ -224,7 +234,7 @@ class CryptoSchool_Model_Lesson extends CryptoSchool_Model {
             $wpdb->update(
                 $progress_table,
                 [
-                    'status' => 'in_progress',
+                    'progress_percent' => 50, // Устанавливаем прогресс 50% для просмотренного урока
                     'updated_at' => current_time('mysql'),
                 ],
                 [
@@ -238,8 +248,8 @@ class CryptoSchool_Model_Lesson extends CryptoSchool_Model {
                 [
                     'user_id' => $user_id,
                     'lesson_id' => $this->id,
-                    'status' => 'in_progress',
-                    'created_at' => current_time('mysql'),
+                    'is_completed' => 0,
+                    'progress_percent' => 50, // Устанавливаем прогресс 50% для просмотренного урока
                     'updated_at' => current_time('mysql'),
                 ]
             );
@@ -271,8 +281,10 @@ class CryptoSchool_Model_Lesson extends CryptoSchool_Model {
      */
     public function mark_as_completed_by_user($user_id, $completed_tasks = []) {
         global $wpdb;
-        $progress_table = $wpdb->prefix . 'cryptoschool_user_progress';
+        $progress_table = $wpdb->prefix . 'cryptoschool_user_lesson_progress';
+        $task_progress_table = $wpdb->prefix . 'cryptoschool_user_task_progress';
 
+        // Получаем ID записи о прогрессе
         $query = $wpdb->prepare(
             "SELECT id FROM {$progress_table} WHERE user_id = %d AND lesson_id = %d",
             $user_id,
@@ -281,18 +293,18 @@ class CryptoSchool_Model_Lesson extends CryptoSchool_Model {
 
         $progress_id = $wpdb->get_var($query);
 
-        $completed_tasks_json = !empty($completed_tasks) ? json_encode($completed_tasks) : null;
+        // Текущее время
+        $current_time = current_time('mysql');
 
         if ($progress_id) {
             // Обновление существующей записи
             $wpdb->update(
                 $progress_table,
                 [
-                    'status' => 'completed',
-                    'completion_date' => current_time('mysql'),
-                    'points' => $this->completion_points,
-                    'completed_tasks' => $completed_tasks_json,
-                    'updated_at' => current_time('mysql'),
+                    'is_completed' => 1,
+                    'progress_percent' => 100,
+                    'completed_at' => $current_time,
+                    'updated_at' => $current_time,
                 ],
                 [
                     'id' => $progress_id,
@@ -305,14 +317,53 @@ class CryptoSchool_Model_Lesson extends CryptoSchool_Model {
                 [
                     'user_id' => $user_id,
                     'lesson_id' => $this->id,
-                    'status' => 'completed',
-                    'completion_date' => current_time('mysql'),
-                    'points' => $this->completion_points,
-                    'completed_tasks' => $completed_tasks_json,
-                    'created_at' => current_time('mysql'),
-                    'updated_at' => current_time('mysql'),
+                    'is_completed' => 1,
+                    'progress_percent' => 100,
+                    'completed_at' => $current_time,
+                    'updated_at' => $current_time,
                 ]
             );
+        }
+
+        // Обновление прогресса по заданиям
+        if (!empty($completed_tasks)) {
+            foreach ($completed_tasks as $task_id) {
+                // Проверяем, существует ли запись о прогрессе по заданию
+                $query = $wpdb->prepare(
+                    "SELECT id FROM {$task_progress_table} WHERE user_id = %d AND lesson_id = %d AND task_id = %d",
+                    $user_id,
+                    $this->id,
+                    $task_id
+                );
+                
+                $task_progress_id = $wpdb->get_var($query);
+                
+                if ($task_progress_id) {
+                    // Обновление существующей записи
+                    $wpdb->update(
+                        $task_progress_table,
+                        [
+                            'is_completed' => 1,
+                            'completed_at' => $current_time,
+                        ],
+                        [
+                            'id' => $task_progress_id,
+                        ]
+                    );
+                } else {
+                    // Создание новой записи
+                    $wpdb->insert(
+                        $task_progress_table,
+                        [
+                            'user_id' => $user_id,
+                            'lesson_id' => $this->id,
+                            'task_id' => $task_id,
+                            'is_completed' => 1,
+                            'completed_at' => $current_time,
+                        ]
+                    );
+                }
+            }
         }
 
         // Обновление таблицы активностей
@@ -325,7 +376,7 @@ class CryptoSchool_Model_Lesson extends CryptoSchool_Model {
                 'ref_id' => $this->id,
                 'title' => $this->title,
                 'status' => 'completed',
-                'created_at' => current_time('mysql'),
+                'created_at' => $current_time,
             ]
         );
 
@@ -344,25 +395,30 @@ class CryptoSchool_Model_Lesson extends CryptoSchool_Model {
     private function update_user_leaderboard($user_id) {
         global $wpdb;
         $leaderboard_table = $wpdb->prefix . 'cryptoschool_user_leaderboard';
-        $progress_table = $wpdb->prefix . 'cryptoschool_user_progress';
+        $progress_table = $wpdb->prefix . 'cryptoschool_user_lesson_progress';
+        $lessons_table = $wpdb->prefix . 'cryptoschool_lessons';
 
         // Получение общего количества баллов пользователя
+        // Баллы рассчитываются как сумма completion_points для всех завершенных уроков
         $query = $wpdb->prepare(
-            "SELECT SUM(points) FROM {$progress_table} WHERE user_id = %d",
+            "SELECT SUM(l.completion_points) 
+            FROM {$progress_table} p
+            INNER JOIN {$lessons_table} l ON p.lesson_id = l.id
+            WHERE p.user_id = %d AND p.is_completed = 1",
             $user_id
         );
         $total_points = (int) $wpdb->get_var($query);
 
         // Получение количества завершенных уроков
         $query = $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$progress_table} WHERE user_id = %d AND status = 'completed'",
+            "SELECT COUNT(*) FROM {$progress_table} WHERE user_id = %d AND is_completed = 1",
             $user_id
         );
         $completed_lessons = (int) $wpdb->get_var($query);
 
         // Получение количества дней на проекте
         $query = $wpdb->prepare(
-            "SELECT DATEDIFF(NOW(), MIN(created_at)) FROM {$progress_table} WHERE user_id = %d",
+            "SELECT DATEDIFF(NOW(), MIN(updated_at)) FROM {$progress_table} WHERE user_id = %d",
             $user_id
         );
         $days_active = (int) $wpdb->get_var($query);
