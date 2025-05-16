@@ -5,9 +5,26 @@
  * @package CryptoSchool
  */
 
-// Заглушки для данных статистики
+// Получаем данные пользователя
+$current_user = wp_get_current_user();
+$user_id = $current_user->ID;
+
+// Получаем дату регистрации пользователя
+$user_data = get_userdata($user_id);
+$registration_date = $user_data->user_registered;
+
+// Вычисляем количество дней с момента регистрации
+$registration_timestamp = strtotime($registration_date);
+$current_timestamp = current_time('timestamp');
+$days_on_project = floor(($current_timestamp - $registration_timestamp) / (60 * 60 * 24));
+
+// Если пользователь зарегистрировался сегодня, устанавливаем значение 1
+if ($days_on_project < 1) {
+    $days_on_project = 1;
+}
+
+// Заглушки для остальных данных статистики
 $total_points = 341;
-$days_on_project = 304;
 $rank = 6;
 ?>
 

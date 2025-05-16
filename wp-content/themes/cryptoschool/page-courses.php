@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Template Name: Навчання
  *
@@ -95,49 +96,144 @@ try {
 }
 */
 
-// Заглушки для последних заданий
-$last_tasks = array(
-    array(
-        'id' => 1,
-        'status' => 'orange', // orange, green, red
-        'pretitle' => 'Поток Crypto education Factory от Crypto | Sjft | Tools',
-        'title' => 'DEX обзор universety tools',
-        'subtitle' => 'Відкритий',
-        'amount' => '+5'
+// Получаем активный урок с помощью SQL-запроса
+global $wpdb;
+$active_lesson_query = "
+    WITH user_packages AS (
+        -- Получаем пакеты пользователя
+        SELECT 
+            ua.id AS access_id,
+            ua.package_id,
+            p.course_ids
+        FROM {$wpdb->prefix}cryptoschool_user_access ua
+        JOIN {$wpdb->prefix}cryptoschool_packages p ON ua.package_id = p.id
+        WHERE ua.user_id = %d AND ua.status = 'active'
     ),
-    array(
-        'id' => 2,
-        'status' => 'orange',
-        'pretitle' => 'Поток Crypto education Factory от Crypto | Sjft | Tools',
-        'title' => 'DEX обзор universety tools',
-        'subtitle' => 'Відкритий',
-        'amount' => '+5'
+    user_courses AS (
+        -- Получаем курсы из пакетов пользователя и сортируем по ID
+        SELECT 
+            c.id AS course_id,
+            c.title AS course_title,
+            (
+                -- Вычисляем прогресс по курсу
+                SELECT COALESCE(ROUND(
+                    SUM(CASE WHEN ulp.is_completed = 1 THEN 1 ELSE NULL END) * 100.0 / COUNT(*)
+                ), 0)
+                FROM {$wpdb->prefix}cryptoschool_lessons l
+                LEFT JOIN {$wpdb->prefix}cryptoschool_user_lesson_progress ulp 
+                    ON l.id = ulp.lesson_id AND ulp.user_id = %d
+                WHERE l.course_id = c.id AND l.is_active = 1
+            ) AS progress
+        FROM {$wpdb->prefix}cryptoschool_courses c
+        JOIN user_packages up ON JSON_CONTAINS(up.course_ids, CONCAT('\"', c.id, '\"'))
+        WHERE c.is_active = 1
+        ORDER BY c.id ASC
     ),
-    array(
-        'id' => 3,
-        'status' => 'orange',
-        'pretitle' => 'Поток Crypto education Factory от Crypto | Sjft | Tools',
-        'title' => 'DEX обзор universety tools',
-        'subtitle' => 'Відкритий',
-        'amount' => '+5'
+    active_course AS (
+        -- Находим первый незавершенный курс
+        SELECT 
+            course_id,
+            course_title
+        FROM user_courses
+        WHERE progress < 100
+        ORDER BY course_id ASC
+        LIMIT 1
     ),
-    array(
-        'id' => 4,
-        'status' => 'orange',
-        'pretitle' => 'Поток Crypto education Factory от Crypto | Sjft | Tools',
-        'title' => 'DEX обзор universety tools',
-        'subtitle' => 'Відкритий',
-        'amount' => '+5'
+    completed_lessons AS (
+        -- Находим все завершенные уроки в активном курсе
+        SELECT 
+            l.id AS lesson_id,
+            l.lesson_order
+        FROM {$wpdb->prefix}cryptoschool_lessons l
+        JOIN {$wpdb->prefix}cryptoschool_user_lesson_progress ulp 
+            ON l.id = ulp.lesson_id AND ulp.user_id = %d
+        JOIN active_course ac ON l.course_id = ac.course_id
+        WHERE ulp.is_completed = 1
+        ORDER BY l.lesson_order DESC
+        LIMIT 1
     ),
-    array(
-        'id' => 5,
-        'status' => 'orange',
-        'pretitle' => 'Поток Crypto education Factory от Crypto | Sjft | Tools',
-        'title' => 'DEX обзор universety tools',
-        'subtitle' => 'Відкритий',
-        'amount' => '+5'
+    next_lesson AS (
+        -- Находим следующий урок после последнего завершенного
+        SELECT 
+            l.id AS lesson_id,
+            l.title AS lesson_title,
+            l.lesson_order,
+            l.completion_points,
+            ac.course_id,
+            ac.course_title
+        FROM {$wpdb->prefix}cryptoschool_lessons l
+        JOIN active_course ac ON l.course_id = ac.course_id
+        LEFT JOIN completed_lessons cl ON 1=1
+        WHERE l.is_active = 1
+          AND (
+              -- Если есть завершенные уроки, берем следующий по порядку
+              (cl.lesson_id IS NOT NULL AND l.lesson_order > cl.lesson_order)
+              OR
+              -- Если нет завершенных уроков, берем первый урок курса
+              (cl.lesson_id IS NULL)
+          )
+        ORDER BY l.lesson_order ASC
+        LIMIT 1
     )
-);
+    -- Выводим активный урок
+    SELECT * FROM next_lesson;
+";
+
+$active_lesson_result = $wpdb->get_row($wpdb->prepare($active_lesson_query, $current_user_id, $current_user_id, $current_user_id));
+
+// Получаем пройденные уроки
+$completed_lessons_query = "
+    SELECT 
+        l.id AS lesson_id,
+        l.title AS lesson_title,
+        c.id AS course_id,
+        c.title AS course_title,
+        ulp.completed_at,
+        l.completion_points
+    FROM {$wpdb->prefix}cryptoschool_lessons l
+    JOIN {$wpdb->prefix}cryptoschool_courses c ON l.course_id = c.id
+    JOIN {$wpdb->prefix}cryptoschool_user_lesson_progress ulp 
+        ON l.id = ulp.lesson_id AND ulp.user_id = %d
+    WHERE ulp.is_completed = 1
+    ORDER BY ulp.completed_at DESC
+    LIMIT 5;
+";
+
+$completed_lessons = $wpdb->get_results($wpdb->prepare($completed_lessons_query, $current_user_id));
+
+// Формируем итоговый массив: сначала активный урок, затем пройденные
+$last_tasks = [];
+
+// Добавляем активный урок, если он есть
+if ($active_lesson_result) {
+    $last_tasks[] = [
+        'id' => $active_lesson_result->lesson_id,
+        'status' => 'orange', // активный урок - оранжевый
+        'pretitle' => $active_lesson_result->course_title,
+        'title' => $active_lesson_result->lesson_title,
+        'subtitle' => 'У процесі',
+        'amount' => '+' . ($active_lesson_result->completion_points ?? 5)
+    ];
+}
+
+// Добавляем пройденные уроки (максимум 4, если есть активный урок)
+$max_completed = $active_lesson_result ? 4 : 5;
+$completed_count = 0;
+
+foreach ($completed_lessons as $completed) {
+    if ($completed_count >= $max_completed) break;
+    
+    $last_tasks[] = [
+        'id' => $completed->lesson_id,
+        'status' => 'green', // пройденный урок - зеленый
+        'pretitle' => $completed->course_title,
+        'title' => $completed->lesson_title,
+        'subtitle' => 'Виконаний',
+        'amount' => '+' . ($completed->completion_points ?? 5)
+    ];
+    
+    $completed_count++;
+}
 ?>
 
 <main>
@@ -150,8 +246,8 @@ $last_tasks = array(
     <div class="container container_wide courses__container">
         <!-- Горизонтальная навигация -->
         <?php get_template_part('template-parts/account/horizontal-navigation'); ?>
-                    <!-- Блок прогресса обучения -->
-                    <div class="study-daily-progress palette palette_blurred account-block courses__progress">
+        <!-- Блок прогресса обучения -->
+        <div class="study-daily-progress palette palette_blurred account-block courses__progress">
             <div class="study-daily-progress__steps">
                 <div class="study-daily-progress__step">
                     <div class="study-daily-progress__reward">
@@ -228,39 +324,39 @@ $last_tasks = array(
                 <div class="study-daily-progress__hint text-small">Практикуйтесь щодня, щоб не втратити відрізок</div>
             </div>
         </div>
-        
-                    <!-- Блок списка курсов -->
-                    <div class="account-block palette palette_blurred courses__block">
+
+        <!-- Блок списка курсов -->
+        <div class="account-block palette palette_blurred courses__block">
             <h6 class="h6 color-primary account-block__title courses__block-title">Наши курси</h6>
             <hr class="account-block__horizontal-row">
-            
+
             <div class="courses__list">
                 <?php if (empty($courses)) : ?>
                     <p class="text-small">Курсы не найдены</p>
                 <?php else : ?>
-                    <?php 
+                    <?php
                     // Отладочная информация
                     echo '<div style="background-color: #fff; color: #000; padding: 10px; margin-bottom: 20px; border-radius: 5px;">';
                     echo '<h3>Отладочная информация</h3>';
                     echo '<p>Количество курсов: ' . count($courses) . '</p>';
                     echo '<p>ID текущего пользователя: ' . $current_user_id . '</p>';
-                    
+
                     // Проверяем таблицу доступов
                     global $wpdb;
                     $access_table = $wpdb->prefix . 'cryptoschool_user_access';
                     $packages_table = $wpdb->prefix . 'cryptoschool_packages';
-                    
+
                     $query = $wpdb->prepare(
                         "SELECT a.*, p.course_ids FROM {$access_table} a
                         INNER JOIN {$packages_table} p ON a.package_id = p.id
                         WHERE a.user_id = %d AND a.status = 'active'",
                         $current_user_id
                     );
-                    
+
                     $accesses = $wpdb->get_results($query);
-                    
+
                     echo '<p>Количество активных доступов: ' . count($accesses) . '</p>';
-                    
+
                     if (!empty($accesses)) {
                         echo '<ul>';
                         foreach ($accesses as $access) {
@@ -268,26 +364,26 @@ $last_tasks = array(
                         }
                         echo '</ul>';
                     }
-                    
+
                     echo '</div>';
-                    
+
                     // Переменная для отслеживания, завершен ли предыдущий курс
                     $previous_course_completed = true;
-                    
-                    foreach ($courses as $course) : 
+
+                    foreach ($courses as $course) :
                         // Получаем ID курса
                         $course_id = $course->getAttribute('id');
-                        
+
                         // Определяем статус курса для пользователя
                         $is_available = $course->is_available_for_user($current_user_id);
                         $progress = $is_available ? $course->get_user_progress($current_user_id) : 0;
-                        
+
                         // Отладочная информация для каждого курса
                         echo '<div style="background-color: #fff; color: #000; padding: 10px; margin-bottom: 10px; border-radius: 5px;">';
                         echo '<p>Курс ID: ' . $course_id . ', Название: ' . $course->getAttribute('title') . '</p>';
                         echo '<p>Доступен: ' . ($is_available ? 'Да' : 'Нет') . ', Прогресс: ' . $progress . '%</p>';
                         echo '</div>';
-                        
+
                         // Определяем статус на основе прогресса, доступности и завершения предыдущего курса
                         if (!$previous_course_completed) {
                             // Если предыдущий курс не завершен, этот курс заблокирован
@@ -295,14 +391,14 @@ $last_tasks = array(
                         } else {
                             // Иначе определяем статус на основе доступности и прогресса
                             $status = !$is_available ? 'locked' : ($progress >= 100 ? 'done' : 'in_progress');
-                            
+
                             // Обновляем статус завершения предыдущего курса для следующей итерации
                             $previous_course_completed = ($status === 'done');
                         }
-                        
+
                         // Получаем уроки курса для отображения в списке тем
                         $lessons = $course->get_lessons();
-                        
+
                         // Получаем URL изображения курса
                         $image_url = $course->get_thumbnail_url('medium');
                         if (empty($image_url)) {
@@ -319,16 +415,16 @@ $last_tasks = array(
                             <div class="course-card__body">
                                 <div class="h6 course-card__title"><?php echo esc_html($course->getAttribute('title')); ?></div>
                                 <ul class="account-list course-card__list">
-                                    <?php 
+                                    <?php
                                     // Выводим до 5 уроков в качестве тем курса
                                     $topics_count = 0;
-                                    foreach ($lessons as $lesson) : 
+                                    foreach ($lessons as $lesson) :
                                         if ($topics_count >= 5) break; // Ограничиваем количество тем
                                     ?>
                                         <li><?php echo esc_html($lesson->getAttribute('title')); ?></li>
-                                    <?php 
+                                    <?php
                                         $topics_count++;
-                                    endforeach; 
+                                    endforeach;
                                     ?>
                                 </ul>
                                 <?php if (count($lessons) > 5) : ?>
@@ -351,47 +447,51 @@ $last_tasks = array(
                 <?php endif; ?>
             </div>
         </div>
-        
-                    <!-- Блок последних заданий -->
-                    <div class="account-block palette palette_blurred">
+
+        <!-- Блок последних заданий -->
+        <div class="account-block palette palette_blurred">
             <h5 class="account-block__title text">Останні завданя</h5>
             <hr class="account-block__horizontal-row">
-            <div class="account-block__tabs hide-tablet hide-mobile">
+            <!-- <div class="account-block__tabs hide-tablet hide-mobile">
                 <a href="#" class="account-block__tab text-small account-block__tab_active">Уcі</a>
                 <a href="#" class="account-block__tab text-small">Активні</a>
                 <a href="#" class="account-block__tab text-small">Виконані</a>
                 <a href="#" class="account-block__tab text-small">На перевірці</a>
                 <a href="#" class="account-block__tab text-small">Доопрацювати</a>
-            </div>
+            </div> -->
             <div class="account-last-tasks__items">
-                <?php foreach ($last_tasks as $task) : ?>
-                    <div class="status-line palette palette_hoverable account-last-tasks-item">
-                        <div class="status-line-indicator status-line-indicator_<?php echo esc_attr($task['status']); ?>"></div>
-                        <div class="account-last-tasks-item__body">
-                            <div class="account-last-tasks-item__content">
-                                <div class="account-last-tasks-item__pretitle text-small color-primary">
-                                    <?php echo esc_html($task['pretitle']); ?>
+                <?php if (empty($last_tasks)) : ?>
+                    <p class="text-small">У вас пока нет пройденных уроков</p>
+                <?php else : ?>
+                    <?php foreach ($last_tasks as $task) : ?>
+                        <div class="status-line palette palette_hoverable account-last-tasks-item">
+                            <div class="status-line-indicator status-line-indicator_<?php echo esc_attr($task['status']); ?>"></div>
+                            <div class="account-last-tasks-item__body">
+                                <div class="account-last-tasks-item__content">
+                                    <div class="account-last-tasks-item__pretitle text-small color-primary">
+                                        <?php echo esc_html($task['pretitle']); ?>
+                                    </div>
+                                    <h6 class="account-last-tasks-item__title text"><?php echo esc_html($task['title']); ?></h6>
+                                    <div class="account-last-tasks-item__subtitle text-small">
+                                        <?php echo esc_html($task['subtitle']); ?>
+                                    </div>
                                 </div>
-                                <h6 class="account-last-tasks-item__title text"><?php echo esc_html($task['title']); ?></h6>
-                                <div class="account-last-tasks-item__subtitle text-small">
-                                    <?php echo esc_html($task['subtitle']); ?>
+                                <div class="account-last-tasks-item__details">
+                                    <div class="text-small account-last-tasks-item__amount"><?php echo esc_html($task['amount']); ?></div>
+                                    <a href="<?php echo esc_url(site_url('/lesson/?id=' . $task['id'])); ?>" class="account-last-tasks-item__link">
+                                        <span class="icon-play-triangle-right"></span>
+                                    </a>
                                 </div>
-                            </div>
-                            <div class="account-last-tasks-item__details">
-                                <div class="text-small account-last-tasks-item__amount"><?php echo esc_html($task['amount']); ?></div>
-                                <button class="account-last-tasks-item__link">
-                                    <span class="icon-play-triangle-right"></span>
-                                </button>
                             </div>
                         </div>
-                    </div>
-                <?php endforeach; ?>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </div>
-                        <button class="account-more">
-                            <span class="text-small color-primary">Показати ще</span>
-                            <span class="icon-arrow-right-small account-more__icon"></span>
-                        </button>
-                    </div>
+            <!-- <button class="account-more">
+                <span class="text-small color-primary">Показати ще</span>
+                <span class="icon-arrow-right-small account-more__icon"></span>
+            </button> -->
+        </div>
     </div>
 </main>
 
