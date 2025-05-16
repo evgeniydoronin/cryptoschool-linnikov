@@ -431,6 +431,41 @@ class CryptoSchool_Activator {
             KEY achievement_id (achievement_id)
         ) $charset_collate;";
 
+        // Таблица для хранения информации о ежедневной серии пользователя
+        $table_name = $wpdb->prefix . 'cryptoschool_user_streak';
+        $sql_queries[] = "CREATE TABLE $table_name (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) UNSIGNED NOT NULL,       -- ID пользователя
+            current_streak int(11) NOT NULL DEFAULT 0,  -- Текущая длина серии
+            max_streak int(11) NOT NULL DEFAULT 0,      -- Максимальная длина серии
+            last_activity_date date NOT NULL,           -- Дата последней активности
+            lessons_today int(11) NOT NULL DEFAULT 0,   -- Количество уроков, пройденных сегодня
+            created_at datetime NOT NULL,               -- Дата создания
+            updated_at datetime NOT NULL,               -- Дата обновления
+            PRIMARY KEY (id),
+            UNIQUE KEY user_id (user_id),
+            KEY last_activity_date (last_activity_date)
+        ) $charset_collate;";
+
+        // Таблица для хранения истории начисления баллов
+        $table_name = $wpdb->prefix . 'cryptoschool_points_history';
+        $sql_queries[] = "CREATE TABLE $table_name (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) UNSIGNED NOT NULL,       -- ID пользователя
+            lesson_id bigint(20) UNSIGNED DEFAULT NULL, -- ID урока (может быть NULL для бонусов)
+            points int(11) NOT NULL,                    -- Количество начисленных баллов
+            points_type enum('lesson', 'streak', 'multi_lesson', 'course_completion') NOT NULL, -- Тип баллов
+            streak_day int(11) DEFAULT NULL,            -- День серии (для баллов за серию)
+            lesson_number_today int(11) DEFAULT NULL,   -- Номер урока за день (для мульти-уроков)
+            description text,                           -- Описание начисления
+            created_at datetime NOT NULL,               -- Дата начисления
+            PRIMARY KEY (id),
+            KEY user_id (user_id),
+            KEY lesson_id (lesson_id),
+            KEY points_type (points_type),
+            KEY created_at (created_at)
+        ) $charset_collate;";
+
         return $sql_queries;
     }
 
