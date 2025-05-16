@@ -130,7 +130,15 @@ class PointsSystemTester {
             $streak->lessons_today = 0;
             $streak->created_at = $date . ' 00:00:00';
             $streak->updated_at = $date . ' 00:00:00';
-            $streak_repository->create((array)$streak);
+            $streak_repository->create_or_update($streak->user_id, [
+                'user_id' => $streak->user_id,
+                'current_streak' => $streak->current_streak,
+                'max_streak' => $streak->max_streak,
+                'last_activity_date' => $streak->last_activity_date,
+                'lessons_today' => $streak->lessons_today,
+                'created_at' => $streak->created_at,
+                'updated_at' => $streak->updated_at
+            ]);
         }
         
         // Манипулируем датой последней активности для симуляции
@@ -167,7 +175,13 @@ class PointsSystemTester {
         // Обновляем дату последней активности
         $streak->last_activity_date = $date;
         $streak->updated_at = $date . ' 00:00:00';
-        $streak_repository->update($streak->id, (array)$streak);
+        $streak_repository->create_or_update($streak->user_id, [
+            'current_streak' => $streak->current_streak,
+            'max_streak' => $streak->max_streak,
+            'last_activity_date' => $streak->last_activity_date,
+            'lessons_today' => $streak->lessons_today,
+            'updated_at' => $streak->updated_at
+        ]);
         
         // Создаем запись о прохождении урока
         $progress_repository = new CryptoSchool_Repository_User_Lesson_Progress();
@@ -178,7 +192,14 @@ class PointsSystemTester {
         $progress->progress_percent = 100;
         $progress->completed_at = $date . ' 00:00:00';
         $progress->updated_at = $date . ' 00:00:00';
-        $progress_repository->create((array)$progress);
+        $progress_repository->create([
+            'user_id' => $progress->user_id,
+            'lesson_id' => $progress->lesson_id,
+            'is_completed' => $progress->is_completed,
+            'progress_percent' => $progress->progress_percent,
+            'completed_at' => $progress->completed_at,
+            'updated_at' => $progress->updated_at
+        ]);
         
         // Начисляем баллы за урок
         $lesson_points = $lesson->completion_points ?? 5;
