@@ -33,6 +33,7 @@ wp-content/db.php
 
 # Custom theme exceptions
 !wp-content/themes/cryptoschool/
+wp-content/themes/cryptoschool/frontend-source/
 
 # OS generated files
 .DS_Store
