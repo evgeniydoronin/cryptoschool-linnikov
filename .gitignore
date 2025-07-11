@@ -49,6 +49,7 @@ Thumbs.db
 .vscode/
 *.sublime-project
 *.sublime-workspace
+.clinerules/
 
 # Node modules and build files
 node_modules/
