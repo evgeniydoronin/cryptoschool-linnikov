@@ -16,13 +16,6 @@ if (!defined('ABSPATH')) {
  */
 class CryptoSchool_Public_Course {
     /**
-     * Сервис для работы с курсами
-     *
-     * @var CryptoSchool_Service_Course
-     */
-    protected $course_service;
-
-    /**
      * Экземпляр загрузчика
      *
      * @var CryptoSchool_Loader
@@ -36,7 +29,6 @@ class CryptoSchool_Public_Course {
      */
     public function __construct($loader) {
         $this->loader = $loader;
-        $this->course_service = new CryptoSchool_Service_Course($loader);
         $this->init();
     }
 
@@ -60,31 +52,19 @@ class CryptoSchool_Public_Course {
     public function shortcode_courses($atts) {
         $atts = shortcode_atts([
             'limit' => 10,
-            'orderby' => 'course_order',
+            'orderby' => 'menu_order',
             'order' => 'ASC',
-            'is_active' => 1,
-            'featured' => null,
-            'difficulty' => '',
             'template' => 'default',
         ], $atts, 'cryptoschool_courses');
 
-        // Получение курсов
-        $args = [
-            'limit' => (int) $atts['limit'],
+        // Получение курсов через Custom Post Types
+        $courses = get_posts([
+            'post_type' => 'cryptoschool_course',
+            'post_status' => 'publish',
+            'numberposts' => (int) $atts['limit'],
             'orderby' => sanitize_text_field($atts['orderby']),
             'order' => sanitize_text_field($atts['order']),
-            'is_active' => (int) $atts['is_active'],
-        ];
-
-        if ($atts['featured'] !== null) {
-            $args['featured'] = (int) $atts['featured'];
-        }
-
-        if (!empty($atts['difficulty'])) {
-            $args['difficulty'] = sanitize_text_field($atts['difficulty']);
-        }
-
-        $courses = $this->course_service->get_all($args);
+        ]);
 
         // Подключение шаблона
         $template = sanitize_text_field($atts['template']);
@@ -95,7 +75,19 @@ class CryptoSchool_Public_Course {
         }
 
         ob_start();
-        include $template_path;
+        if (file_exists($template_path)) {
+            include $template_path;
+        } else {
+            // Простой вывод, если шаблон не найден
+            echo '<div class="cryptoschool-courses">';
+            foreach ($courses as $course) {
+                echo '<div class="course-item">';
+                echo '<h3>' . esc_html($course->post_title) . '</h3>';
+                echo '<div class="course-excerpt">' . wp_kses_post($course->post_excerpt) . '</div>';
+                echo '</div>';
+            }
+            echo '</div>';
+        }
         return ob_get_clean();
     }
 
@@ -112,27 +104,50 @@ class CryptoSchool_Public_Course {
             'template' => 'default',
         ], $atts, 'cryptoschool_course');
 
-        // Получение курса
+        // Получение курса через Custom Post Types
         $course = null;
         if (!empty($atts['id'])) {
-            $course = $this->course_service->get_by_id((int) $atts['id']);
+            $course = get_post((int) $atts['id']);
+            if ($course && $course->post_type !== 'cryptoschool_course') {
+                $course = null;
+            }
         } elseif (!empty($atts['slug'])) {
-            $course = $this->course_service->get_by_slug(sanitize_text_field($atts['slug']));
+            $courses = get_posts([
+                'post_type' => 'cryptoschool_course',
+                'name' => sanitize_text_field($atts['slug']),
+                'post_status' => 'publish',
+                'numberposts' => 1
+            ]);
+            $course = !empty($courses) ? $courses[0] : null;
         }
 
         if (!$course) {
             return '';
         }
 
-        // Получение уроков курса
-        $lessons = $this->course_service->get_lessons($course->id, ['is_active' => 1, 'orderby' => 'lesson_order', 'order' => 'ASC']);
+        // Получение уроков курса через Custom Post Types
+        // Используем ACF поле для связи или meta_query
+        $lessons = get_posts([
+            'post_type' => 'cryptoschool_lesson',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+            'orderby' => 'menu_order',
+            'order' => 'ASC',
+            'meta_query' => [
+                [
+                    'key' => 'lesson_course', // ACF поле связи с курсом
+                    'value' => $course->ID,
+                    'compare' => '='
+                ]
+            ]
+        ]);
 
-        // Получение прогресса пользователя
+        // Получение прогресса пользователя (временно заглушка)
         $user_id = get_current_user_id();
-        $user_progress = $user_id ? $this->course_service->get_user_progress($course->id, $user_id) : null;
-
-        // Проверка доступа пользователя к курсу
-        $has_access = $user_id ? $this->course_service->is_available_for_user($course->id, $user_id) : false;
+        $user_progress = null; // TODO: Реализовать через Custom Post Types или мета-поля
+        
+        // Проверка доступа пользователя к курсу (временно заглушка)
+        $has_access = true; // TODO: Реализовать проверку доступа
 
         // Подключение шаблона
         $template = sanitize_text_field($atts['template']);
@@ -143,7 +158,23 @@ class CryptoSchool_Public_Course {
         }
 
         ob_start();
-        include $template_path;
+        if (file_exists($template_path)) {
+            include $template_path;
+        } else {
+            // Простой вывод, если шаблон не найден
+            echo '<div class="cryptoschool-course">';
+            echo '<h2>' . esc_html($course->post_title) . '</h2>';
+            echo '<div class="course-content">' . wp_kses_post($course->post_content) . '</div>';
+            if (!empty($lessons)) {
+                echo '<h3>Уроки:</h3>';
+                echo '<ul class="course-lessons">';
+                foreach ($lessons as $lesson) {
+                    echo '<li>' . esc_html($lesson->post_title) . '</li>';
+                }
+                echo '</ul>';
+            }
+            echo '</div>';
+        }
         return ob_get_clean();
     }
 }

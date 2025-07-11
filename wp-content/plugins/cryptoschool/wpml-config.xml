@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wpml-config>
+    <!-- Custom Post Types -->
+    <post-types>
+        <post-type translate="1">cryptoschool_course</post-type>
+        <post-type translate="1">cryptoschool_lesson</post-type>
+    </post-types>
+    
+    <!-- Custom Fields -->
+    <custom-fields>
+        <!-- Переводимые поля -->
+        <custom-field action="translate">difficulty_level</custom-field>
+        
+        <!-- Копируемые поля (не переводятся) -->
+        <custom-field action="copy">course_id</custom-field>
+        <custom-field action="copy">lesson_order</custom-field>
+        <custom-field action="copy">course_order</custom-field>
+        <custom-field action="copy">completion_points</custom-field>
+        <custom-field action="copy">thumbnail</custom-field>
+        <custom-field action="copy">featured</custom-field>
+        <custom-field action="copy">video_url</custom-field>
+        <custom-field action="copy">completion_tasks</custom-field>
+        <custom-field action="copy">_cryptoschool_table_id</custom-field>
+        
+        <!-- Игнорируемые поля -->
+        <custom-field action="ignore">_cryptoschool_sync_lock</custom-field>
+    </custom-fields>
+    
+    <!-- Настройки для переводов строк (для обратной совместимости) -->
+    <admin-texts>
+        <!-- Регистрация строк из кастомных таблиц -->
+        <key name="cryptoschool_course_*">
+            <key name="title" />
+            <key name="description" />
+            <key name="difficulty_level" />
+        </key>
+        <key name="cryptoschool_lesson_*">
+            <key name="title" />
+            <key name="content" />
+            <key name="completion_tasks" />
+        </key>
+        <key name="cryptoschool_lesson_task_*">
+            <key name="title" />
+        </key>
+    </admin-texts>
+    
+    <!-- Языковые настройки -->
+    <language-switcher-settings>
+        <key name="cryptoschool_course">
+            <key name="display_names_in_current_language">1</key>
+        </key>
+        <key name="cryptoschool_lesson">
+            <key name="display_names_in_current_language">1</key>
+        </key>
+    </language-switcher-settings>
+</wpml-config>

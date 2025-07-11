@@ -24,20 +24,12 @@ class CryptoSchool_Admin_Packages_Controller extends CryptoSchool_Admin_Controll
     private $package_service;
 
     /**
-     * Сервис для работы с курсами
-     *
-     * @var CryptoSchool_Service_Course
-     */
-    private $course_service;
-
-    /**
      * Конструктор класса
      *
      * @param CryptoSchool_Loader $loader Экземпляр загрузчика плагина
      */
     public function __construct($loader) {
         $this->package_service = new CryptoSchool_Service_Package($loader);
-        $this->course_service = new CryptoSchool_Service_Course($loader);
         
         parent::__construct($loader);
     }
@@ -61,8 +53,14 @@ class CryptoSchool_Admin_Packages_Controller extends CryptoSchool_Admin_Controll
         // Получение списка пакетов
         $packages = $this->package_service->get_all();
 
-        // Получение списка курсов для выбора
-        $courses = $this->course_service->get_all(['is_active' => 1]);
+        // Получение списка курсов для выбора (Custom Post Types)
+        $courses = get_posts(array(
+            'post_type' => 'cryptoschool_course',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+            'orderby' => 'menu_order',
+            'order' => 'ASC'
+        ));
 
         // Отображение страницы
         $this->render_view('packages', array(

@@ -23,20 +23,6 @@ class CryptoSchool_Admin {
      */
     private $loader;
 
-    /**
-     * Контроллер для управления курсами
-     *
-     * @var CryptoSchool_Admin_Courses_Controller
-     */
-    private $courses_controller;
-
-
-    /**
-     * Контроллер для управления уроками
-     *
-     * @var CryptoSchool_Admin_Lessons_Controller
-     */
-    private $lessons_controller;
 
     /**
      * Контроллер для управления пакетами
@@ -80,8 +66,6 @@ class CryptoSchool_Admin {
     private function init_controllers() {
         // Подключение файлов сервисов
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service.php';
-        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service-course.php';
-        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service-lesson.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service-package.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service-user-access.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service-influencer.php';
@@ -90,22 +74,16 @@ class CryptoSchool_Admin {
         
         // Подключение файлов репозиториев
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/repositories/class-cryptoschool-repository.php';
-        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/repositories/class-cryptoschool-repository-course.php';
-        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/repositories/class-cryptoschool-repository-lesson.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/repositories/class-cryptoschool-repository-package.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/repositories/class-cryptoschool-repository-user-access.php';
         
         // Подключение файлов моделей
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/models/class-cryptoschool-model.php';
-        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/models/class-cryptoschool-model-course.php';
-        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/models/class-cryptoschool-model-lesson.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/models/class-cryptoschool-model-package.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/models/class-cryptoschool-model-user-access.php';
         
         // Подключение файлов контроллеров
         require_once plugin_dir_path(__FILE__) . 'controllers/class-cryptoschool-admin-controller.php';
-        require_once plugin_dir_path(__FILE__) . 'controllers/class-cryptoschool-admin-courses-controller.php';
-        require_once plugin_dir_path(__FILE__) . 'controllers/class-cryptoschool-admin-lessons-controller.php';
         require_once plugin_dir_path(__FILE__) . 'controllers/class-cryptoschool-admin-packages-controller.php';
         require_once plugin_dir_path(__FILE__) . 'controllers/class-cryptoschool-admin-user-accesses-controller.php';
         require_once plugin_dir_path(__FILE__) . 'controllers/class-cryptoschool-admin-referrals-controller.php';
@@ -114,8 +92,6 @@ class CryptoSchool_Admin {
         require_once plugin_dir_path(__FILE__) . 'helpers/modal-helper.php';
         
         // Инициализация контроллеров
-        $this->courses_controller = new CryptoSchool_Admin_Courses_Controller($this->loader);
-        $this->lessons_controller = new CryptoSchool_Admin_Lessons_Controller($this->loader);
         $this->packages_controller = new CryptoSchool_Admin_Packages_Controller($this->loader);
         $this->user_accesses_controller = new CryptoSchool_Admin_UserAccesses_Controller($this->loader);
         $this->referrals_controller = new CryptoSchool_Admin_Referrals_Controller($this->loader);
@@ -137,66 +113,17 @@ class CryptoSchool_Admin {
      * Добавление пунктов меню в админ-панель
      */
     public function add_admin_menu() {
-        // Главное меню плагина
+        // Главное меню плагина - перенаправляет на страницу курсов
         add_menu_page(
             __('Крипто Школа', 'cryptoschool'),
             __('Крипто Школа', 'cryptoschool'),
             'manage_options',
             'cryptoschool',
-            array($this, 'display_dashboard_page'),
+            array($this, 'redirect_to_courses'),
             'dashicons-welcome-learn-more',
             30
         );
 
-        // Подменю: Дашборд
-        add_submenu_page(
-            'cryptoschool',
-            __('Дашборд', 'cryptoschool'),
-            __('Дашборд', 'cryptoschool'),
-            'manage_options',
-            'cryptoschool',
-            array($this, 'display_dashboard_page')
-        );
-
-        // Подменю: Курсы
-        add_submenu_page(
-            'cryptoschool',
-            __('Курсы', 'cryptoschool'),
-            __('Курсы', 'cryptoschool'),
-            'manage_options',
-            'cryptoschool-courses',
-            array($this, 'display_courses_page')
-        );
-
-
-        // Подменю: Уроки
-        add_submenu_page(
-            'cryptoschool',
-            __('Уроки', 'cryptoschool'),
-            __('Уроки', 'cryptoschool'),
-            'manage_options',
-            'cryptoschool-lessons',
-            array($this, 'display_lessons_page')
-        );
-        
-        // Скрытые страницы для создания и редактирования уроков
-        add_submenu_page(
-            null, // Не показывать в меню
-            __('Добавить урок', 'cryptoschool'),
-            __('Добавить урок', 'cryptoschool'),
-            'manage_options',
-            'cryptoschool-add-lesson',
-            array($this->lessons_controller, 'display_add_lesson_page')
-        );
-        
-        add_submenu_page(
-            null, // Не показывать в меню
-            __('Редактировать урок', 'cryptoschool'),
-            __('Редактировать урок', 'cryptoschool'),
-            'manage_options',
-            'cryptoschool-edit-lesson',
-            array($this->lessons_controller, 'display_edit_lesson_page')
-        );
 
         // Подменю: Пакеты
         add_submenu_page(
@@ -334,29 +261,13 @@ class CryptoSchool_Admin {
         return in_array($screen->id, $plugin_pages);
     }
 
-    /**
-     * Отображение страницы дашборда
-     */
-    public function display_dashboard_page() {
-        // Подключение шаблона
-        require_once plugin_dir_path(__FILE__) . 'views/dashboard.php';
-    }
 
     /**
-     * Отображение страницы курсов
+     * Перенаправление на страницу курсов
      */
-    public function display_courses_page() {
-        $this->courses_controller->display_courses_page();
-    }
-
-
-    /**
-     * Отображение страницы уроков
-     * Если ID курса не указан, отображаются все уроки из всех курсов
-     */
-    public function display_lessons_page() {
-        $course_id = isset($_GET['course_id']) ? (int) $_GET['course_id'] : 0;
-        $this->lessons_controller->display_lessons_page($course_id);
+    public function redirect_to_courses() {
+        wp_redirect(admin_url('edit.php?post_type=cryptoschool_course'));
+        exit;
     }
 
     /**

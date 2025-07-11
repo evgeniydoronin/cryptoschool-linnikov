@@ -97,10 +97,7 @@ class CryptoSchool {
     // Подключение базовых классов
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/helpers/class-cryptoschool-helper-string.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model.php';
-    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-course.php';
-    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-lesson.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-access.php';
-    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-lesson-task.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-lesson-progress.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-task-progress.php';
     
@@ -109,8 +106,6 @@ class CryptoSchool {
     
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository.php';
-    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-course.php';
-    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-lesson.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-user-access.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-lesson-task.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-user-lesson-progress.php';
@@ -119,12 +114,21 @@ class CryptoSchool {
     // Подключение репозиториев реферальной системы
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-referral-link.php';
     
-    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-course.php';
-    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-lesson.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-accessibility.php';
     
     // Подключение сервисов реферальной системы
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-referral.php';
+    
+    // Подключение сервисов WPML
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-wpml.php';
+    
+    // Подключение Custom Post Types
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/post-types/class-cryptoschool-post-types.php';
+    
+    // Подключение отладки (только в режиме разработки)
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/class-cryptoschool-debug.php';
+    }
     
     // Подключение API контроллеров
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/api/class-cryptoschool-api-referral-simple.php';
@@ -132,6 +136,7 @@ class CryptoSchool {
         // Подключение административной части
         if (is_admin()) {
             require_once CRYPTOSCHOOL_PLUGIN_DIR . 'admin/class-cryptoschool-admin.php';
+            require_once CRYPTOSCHOOL_PLUGIN_DIR . 'admin/class-cryptoschool-admin-wpml.php';
         }
         
     // Подключение публичной части
@@ -168,7 +173,12 @@ class CryptoSchool {
         // Регистрация хуков для публичной части
         $public_services = $this->get_public_services();
         foreach ($public_services as $service_class) {
-            new $service_class($this->loader);
+            // Класс отладки не принимает параметр loader
+            if ($service_class === 'CryptoSchool_Debug') {
+                new $service_class();
+            } else {
+                new $service_class($this->loader);
+            }
         }
 
         // Запуск загрузчика
@@ -182,7 +192,8 @@ class CryptoSchool {
      */
     private function get_admin_services() {
         return [
-            'CryptoSchool_Admin'
+            'CryptoSchool_Admin',
+            'CryptoSchool_Admin_WPML'
         ];
     }
 
@@ -192,11 +203,19 @@ class CryptoSchool {
      * @return array
      */
     private function get_public_services() {
-        return [
+        $services = [
             'CryptoSchool_Public_Course',
             'CryptoSchool_Public_Profile',
-            'CryptoSchool_Service_Referral'
+            'CryptoSchool_Service_Referral',
+            'CryptoSchool_Post_Types'
         ];
+        
+        // Добавляем отладку только в режиме разработки
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            $services[] = 'CryptoSchool_Debug';
+        }
+        
+        return $services;
     }
 
     /**
