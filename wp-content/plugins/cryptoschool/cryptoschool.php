@@ -125,10 +125,6 @@ class CryptoSchool {
     // Подключение Custom Post Types
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/post-types/class-cryptoschool-post-types.php';
     
-    // Подключение отладки (только в режиме разработки)
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/class-cryptoschool-debug.php';
-    }
     
     // Подключение API контроллеров
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/api/class-cryptoschool-api-referral-simple.php';
@@ -173,12 +169,7 @@ class CryptoSchool {
         // Регистрация хуков для публичной части
         $public_services = $this->get_public_services();
         foreach ($public_services as $service_class) {
-            // Класс отладки не принимает параметр loader
-            if ($service_class === 'CryptoSchool_Debug') {
-                new $service_class();
-            } else {
-                new $service_class($this->loader);
-            }
+            new $service_class($this->loader);
         }
 
         // Запуск загрузчика
@@ -203,19 +194,12 @@ class CryptoSchool {
      * @return array
      */
     private function get_public_services() {
-        $services = [
+        return [
             'CryptoSchool_Public_Course',
             'CryptoSchool_Public_Profile',
             'CryptoSchool_Service_Referral',
             'CryptoSchool_Post_Types'
         ];
-        
-        // Добавляем отладку только в режиме разработки
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            $services[] = 'CryptoSchool_Debug';
-        }
-        
-        return $services;
     }
 
     /**
