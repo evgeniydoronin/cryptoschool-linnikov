@@ -5,14 +5,30 @@
  * @package CryptoSchool
  */
 
+// Получаем параметры, переданные через get_template_part
+$args = wp_parse_args($args ?? array(), array(
+    'title' => null,
+    'show_user_name' => true
+));
+
 // Получаем данные пользователя
 $current_user = wp_get_current_user();
 $user_name = $current_user->display_name;
 
+// Определяем заголовок
+if ($args['title']) {
+    $greeting_title = $args['title'];
+} elseif ($args['show_user_name']) {
+    $greeting_title = 'Привіт, ' . $user_name;
+} else {
+    $greeting_title = 'Особистий кабінет';
+}
+
 // Получаем текущую дату с днем недели
-setlocale(LC_TIME, 'uk_UA.UTF-8');
-$weekday = date_i18n('l', current_time('timestamp'));
-$current_date = date_i18n('d F', current_time('timestamp'));
+$timestamp = current_time('timestamp');
+$weekday = date('l', $timestamp);
+$day = date('d', $timestamp);
+$month = date('F', $timestamp);
 
 // Преобразуем день недели на украинский
 $weekdays = array(
@@ -24,7 +40,26 @@ $weekdays = array(
     'Saturday' => 'Субота',
     'Sunday' => 'Неділя'
 );
+
+// Преобразуем месяц на украинский
+$months = array(
+    'January' => 'Січня',
+    'February' => 'Лютого',
+    'March' => 'Березня',
+    'April' => 'Квітня',
+    'May' => 'Травня',
+    'June' => 'Червня',
+    'July' => 'Липня',
+    'August' => 'Серпня',
+    'September' => 'Вересня',
+    'October' => 'Жовтня',
+    'November' => 'Листопада',
+    'December' => 'Грудня'
+);
+
 $weekday_ua = isset($weekdays[$weekday]) ? $weekdays[$weekday] : $weekday;
+$month_ua = isset($months[$month]) ? $months[$month] : $month;
+$current_date = $day . ' ' . $month_ua;
 
 // Получаем информацию о доступах пользователя
 global $wpdb;
@@ -65,7 +100,11 @@ if (!empty($user_accesses)) {
     } else {
         // Форматируем дату в нужном формате (день месяц год)
         $expiry_timestamp = strtotime($expiry_date);
-        $expiry_text = 'Передплата діє до ' . date_i18n('j F Y р.', $expiry_timestamp);
+        $expiry_day = date('j', $expiry_timestamp);
+        $expiry_month = date('F', $expiry_timestamp);
+        $expiry_year = date('Y', $expiry_timestamp);
+        $expiry_month_ua = isset($months[$expiry_month]) ? $months[$expiry_month] : $expiry_month;
+        $expiry_text = 'Передплата діє до ' . $expiry_day . ' ' . $expiry_month_ua . ' ' . $expiry_year . ' р.';
     }
 } else {
     // Если у пользователя нет активных доступов
@@ -76,7 +115,7 @@ if (!empty($user_accesses)) {
 <div class="account-greeting">
     <div class="account-greeting__left">
         <div class="account-greeting__date text"><?php echo esc_html($weekday_ua); ?>, <?php echo esc_html($current_date); ?></div>
-        <h5 class="account-greeting__name h5 color-primary">Привіт, <?php echo esc_html($user_name); ?></h5>
+        <h5 class="account-greeting__name h5 color-primary"><?php echo esc_html($greeting_title); ?></h5>
     </div>
     
     <div class="account-greeting-payment palette palette_blurred">

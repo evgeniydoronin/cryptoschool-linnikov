@@ -3,7 +3,7 @@
  * Plugin Name: Crypto School
  * Plugin URI: https://cryptoschool.com
  * Description: Образовательная платформа для обучения криптовалютам
- * Version: 1.0.4
+ * Version: 1.4.1
  * Author: Evgeniy Doronin
  * Author URI: https://evgenedoronin.dev
  * Text Domain: cryptoschool
@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Определение констант плагина
-define('CRYPTOSCHOOL_VERSION', '1.0.4');
+define('CRYPTOSCHOOL_VERSION', '1.4.1');
 define('CRYPTOSCHOOL_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CRYPTOSCHOOL_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('CRYPTOSCHOOL_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -103,6 +103,10 @@ class CryptoSchool {
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-lesson-task.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-lesson-progress.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-task-progress.php';
+    
+    // Подключение моделей реферальной системы
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-referral-link.php';
+    
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-course.php';
@@ -111,9 +115,19 @@ class CryptoSchool {
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-lesson-task.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-user-lesson-progress.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-user-task-progress.php';
+    
+    // Подключение репозиториев реферальной системы
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-referral-link.php';
+    
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-course.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-lesson.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-accessibility.php';
+    
+    // Подключение сервисов реферальной системы
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-referral.php';
+    
+    // Подключение API контроллеров
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/api/class-cryptoschool-api-referral-simple.php';
         
         // Подключение административной части
         if (is_admin()) {
@@ -180,7 +194,8 @@ class CryptoSchool {
     private function get_public_services() {
         return [
             'CryptoSchool_Public_Course',
-            'CryptoSchool_Public_Profile'
+            'CryptoSchool_Public_Profile',
+            'CryptoSchool_Service_Referral'
         ];
     }
 

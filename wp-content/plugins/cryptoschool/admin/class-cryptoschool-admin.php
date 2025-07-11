@@ -53,6 +53,13 @@ class CryptoSchool_Admin {
     private $user_accesses_controller;
 
     /**
+     * Контроллер для управления реферальной системой
+     *
+     * @var CryptoSchool_Admin_Referrals_Controller
+     */
+    private $referrals_controller;
+
+    /**
      * Конструктор класса
      *
      * @param CryptoSchool_Loader $loader Экземпляр загрузчика плагина
@@ -77,6 +84,9 @@ class CryptoSchool_Admin {
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service-lesson.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service-package.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service-user-access.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service-influencer.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service-withdrawal.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/services/class-cryptoschool-service-referral-stats.php';
         
         // Подключение файлов репозиториев
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/repositories/class-cryptoschool-repository.php';
@@ -98,6 +108,7 @@ class CryptoSchool_Admin {
         require_once plugin_dir_path(__FILE__) . 'controllers/class-cryptoschool-admin-lessons-controller.php';
         require_once plugin_dir_path(__FILE__) . 'controllers/class-cryptoschool-admin-packages-controller.php';
         require_once plugin_dir_path(__FILE__) . 'controllers/class-cryptoschool-admin-user-accesses-controller.php';
+        require_once plugin_dir_path(__FILE__) . 'controllers/class-cryptoschool-admin-referrals-controller.php';
         
         // Подключение файлов помощников
         require_once plugin_dir_path(__FILE__) . 'helpers/modal-helper.php';
@@ -107,6 +118,7 @@ class CryptoSchool_Admin {
         $this->lessons_controller = new CryptoSchool_Admin_Lessons_Controller($this->loader);
         $this->packages_controller = new CryptoSchool_Admin_Packages_Controller($this->loader);
         $this->user_accesses_controller = new CryptoSchool_Admin_UserAccesses_Controller($this->loader);
+        $this->referrals_controller = new CryptoSchool_Admin_Referrals_Controller($this->loader);
     }
 
     /**
@@ -365,8 +377,7 @@ class CryptoSchool_Admin {
      * Отображение страницы реферальной системы
      */
     public function display_referrals_page() {
-        // Подключение шаблона
-        require_once plugin_dir_path(__FILE__) . 'views/referrals.php';
+        $this->referrals_controller->display_referrals_page();
     }
 
     /**

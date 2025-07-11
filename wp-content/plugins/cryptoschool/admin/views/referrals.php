@@ -11,12 +11,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Получение списка инфлюенсеров
-$influencers = [];
-$withdrawal_requests = [];
-
-// Здесь будет код для получения данных из базы данных
-// Это заглушка, которая будет заменена на реальный код при реализации функционала
+// Данные передаются из контроллера
+// $influencers, $withdrawal_requests, $stats уже доступны
 ?>
 
 <div class="wrap cryptoschool-admin">
@@ -204,33 +200,68 @@ $withdrawal_requests = [];
                             <div class="cryptoschool-admin-stats-card">
                                 <h3><?php _e('Общая статистика', 'cryptoschool'); ?></h3>
                                 <ul>
-                                    <li><?php _e('Всего реферальных ссылок:', 'cryptoschool'); ?> <strong>0</strong></li>
-                                    <li><?php _e('Всего рефералов:', 'cryptoschool'); ?> <strong>0</strong></li>
-                                    <li><?php _e('Всего покупок через реферальные ссылки:', 'cryptoschool'); ?> <strong>0</strong></li>
-                                    <li><?php _e('Общая сумма комиссий:', 'cryptoschool'); ?> <strong>0 USD</strong></li>
-                                    <li><?php _e('Выплачено комиссий:', 'cryptoschool'); ?> <strong>0 USD</strong></li>
+                                    <li><?php _e('Всего реферальных ссылок:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['total']['referral_links']); ?></strong></li>
+                                    <li><?php _e('Всего рефералов:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['total']['referrals']); ?></strong></li>
+                                    <li><?php _e('Всего покупок через реферальные ссылки:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['total']['purchases']); ?></strong></li>
+                                    <li><?php _e('Общая сумма комиссий:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['total']['commissions_amount']); ?> USD</strong></li>
+                                    <li><?php _e('Выплачено комиссий:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['total']['paid_amount']); ?> USD</strong></li>
                                 </ul>
                             </div>
                             
                             <div class="cryptoschool-admin-stats-card">
                                 <h3><?php _e('Статистика за последний месяц', 'cryptoschool'); ?></h3>
                                 <ul>
-                                    <li><?php _e('Новых реферальных ссылок:', 'cryptoschool'); ?> <strong>0</strong></li>
-                                    <li><?php _e('Новых рефералов:', 'cryptoschool'); ?> <strong>0</strong></li>
-                                    <li><?php _e('Покупок через реферальные ссылки:', 'cryptoschool'); ?> <strong>0</strong></li>
-                                    <li><?php _e('Сумма комиссий:', 'cryptoschool'); ?> <strong>0 USD</strong></li>
-                                    <li><?php _e('Запросов на вывод:', 'cryptoschool'); ?> <strong>0</strong></li>
+                                    <li><?php _e('Новых реферальных ссылок:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['monthly']['referral_links']); ?></strong></li>
+                                    <li><?php _e('Новых рефералов:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['monthly']['referrals']); ?></strong></li>
+                                    <li><?php _e('Покупок через реферальные ссылки:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['monthly']['purchases']); ?></strong></li>
+                                    <li><?php _e('Сумма комиссий:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['monthly']['commissions_amount']); ?> USD</strong></li>
+                                    <li><?php _e('Запросов на вывод:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['monthly']['withdrawal_requests']); ?></strong></li>
                                 </ul>
                             </div>
                             
                             <div class="cryptoschool-admin-stats-card">
                                 <h3><?php _e('Топ рефоводов', 'cryptoschool'); ?></h3>
-                                <p><?php _e('Нет данных для отображения.', 'cryptoschool'); ?></p>
+                                <?php if (!empty($stats['top_referrers'])) : ?>
+                                    <ol>
+                                        <?php foreach ($stats['top_referrers'] as $referrer) : ?>
+                                            <li>
+                                                <strong><?php echo esc_html($referrer['user_login']); ?></strong><br>
+                                                <small><?php echo esc_html($referrer['user_email']); ?></small><br>
+                                                <span class="description">
+                                                    <?php printf(__('Заработано: %s USD | Рефералов: %d', 'cryptoschool'), 
+                                                        esc_html($referrer['total_earned']), 
+                                                        esc_html($referrer['referrals_count'])
+                                                    ); ?>
+                                                </span>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ol>
+                                <?php else : ?>
+                                    <p><?php _e('Нет данных для отображения.', 'cryptoschool'); ?></p>
+                                <?php endif; ?>
                             </div>
                             
                             <div class="cryptoschool-admin-stats-card">
                                 <h3><?php _e('Топ реферальных ссылок', 'cryptoschool'); ?></h3>
-                                <p><?php _e('Нет данных для отображения.', 'cryptoschool'); ?></p>
+                                <?php if (!empty($stats['top_links'])) : ?>
+                                    <ol>
+                                        <?php foreach ($stats['top_links'] as $link) : ?>
+                                            <li>
+                                                <strong><?php echo esc_html($link['link_name']); ?></strong><br>
+                                                <span class="description">
+                                                    <?php printf(__('Переходы: %d | Конверсии: %d (%.1f%%) | Заработано: %s USD', 'cryptoschool'), 
+                                                        esc_html($link['clicks']), 
+                                                        esc_html($link['conversions']),
+                                                        esc_html($link['conversion_rate']),
+                                                        esc_html($link['total_earned'])
+                                                    ); ?>
+                                                </span>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ol>
+                                <?php else : ?>
+                                    <p><?php _e('Нет данных для отображения.', 'cryptoschool'); ?></p>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
