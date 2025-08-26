@@ -8,110 +8,11 @@
 // Получаем текущего пользователя
 $current_user_id = get_current_user_id();
 
-// Получаем активный урок с помощью SQL-запроса
-global $wpdb;
-$active_lesson_query = "
-    WITH user_packages AS (
-        -- Получаем пакеты пользователя
-        SELECT 
-            ua.id AS access_id,
-            ua.package_id,
-            p.course_ids
-        FROM {$wpdb->prefix}cryptoschool_user_access ua
-        JOIN {$wpdb->prefix}cryptoschool_packages p ON ua.package_id = p.id
-        WHERE ua.user_id = %d AND ua.status = 'active'
-    ),
-    user_courses AS (
-        -- Получаем курсы из пакетов пользователя и сортируем по ID
-        SELECT 
-            c.id AS course_id,
-            c.title AS course_title,
-            (
-                -- Вычисляем прогресс по курсу
-                SELECT COALESCE(ROUND(
-                    SUM(CASE WHEN ulp.is_completed = 1 THEN 1 ELSE NULL END) * 100.0 / COUNT(*)
-                ), 0)
-                FROM {$wpdb->prefix}cryptoschool_lessons l
-                LEFT JOIN {$wpdb->prefix}cryptoschool_user_lesson_progress ulp 
-                    ON l.id = ulp.lesson_id AND ulp.user_id = %d
-                WHERE l.course_id = c.id AND l.is_active = 1
-            ) AS progress
-        FROM {$wpdb->prefix}cryptoschool_courses c
-        JOIN user_packages up ON JSON_CONTAINS(up.course_ids, CONCAT('\"', c.id, '\"'))
-        WHERE c.is_active = 1
-        ORDER BY c.id ASC
-    ),
-    active_course AS (
-        -- Находим первый незавершенный курс
-        SELECT 
-            course_id,
-            course_title
-        FROM user_courses
-        WHERE progress < 100
-        ORDER BY course_id ASC
-        LIMIT 1
-    ),
-    completed_lessons AS (
-        -- Находим все завершенные уроки в активном курсе
-        SELECT 
-            l.id AS lesson_id,
-            l.lesson_order
-        FROM {$wpdb->prefix}cryptoschool_lessons l
-        JOIN {$wpdb->prefix}cryptoschool_user_lesson_progress ulp 
-            ON l.id = ulp.lesson_id AND ulp.user_id = %d
-        JOIN active_course ac ON l.course_id = ac.course_id
-        WHERE ulp.is_completed = 1
-        ORDER BY l.lesson_order DESC
-        LIMIT 1
-    ),
-    next_lesson AS (
-        -- Находим следующий урок после последнего завершенного
-        SELECT 
-            l.id AS lesson_id,
-            l.title AS lesson_title,
-            l.lesson_order,
-            l.completion_points,
-            ac.course_id,
-            ac.course_title
-        FROM {$wpdb->prefix}cryptoschool_lessons l
-        JOIN active_course ac ON l.course_id = ac.course_id
-        LEFT JOIN completed_lessons cl ON 1=1
-        WHERE l.is_active = 1
-          AND (
-              -- Если есть завершенные уроки, берем следующий по порядку
-              (cl.lesson_id IS NOT NULL AND l.lesson_order > cl.lesson_order)
-              OR
-              -- Если нет завершенных уроков, берем первый урок курса
-              (cl.lesson_id IS NULL)
-          )
-        ORDER BY l.lesson_order ASC
-        LIMIT 1
-    )
-    -- Выводим активный урок
-    SELECT * FROM next_lesson;
-";
-
-$active_lesson_result = $wpdb->get_row($wpdb->prepare($active_lesson_query, $current_user_id, $current_user_id, $current_user_id));
+// Получаем активный урок через новые функции
+$active_lesson_result = cryptoschool_get_user_active_lesson($current_user_id);
 
 // Получаем пройденные уроки
-$completed_lessons_query = "
-    SELECT 
-        l.id AS lesson_id,
-        l.title AS lesson_title,
-        c.id AS course_id,
-        c.title AS course_title,
-        ulp.completed_at,
-        l.completion_points
-    FROM {$wpdb->prefix}cryptoschool_lessons l
-    JOIN {$wpdb->prefix}cryptoschool_courses c ON l.course_id = c.id
-    JOIN {$wpdb->prefix}cryptoschool_user_lesson_progress ulp 
-        ON l.id = ulp.lesson_id AND ulp.user_id = %d
-    WHERE ulp.is_completed = 1
-    ORDER BY ulp.completed_at DESC
-    LIMIT 3;
-";
-
-$completed_lessons = $wpdb->get_results($wpdb->prepare($completed_lessons_query, $current_user_id));
+$completed_lessons = cryptoschool_get_user_completed_lessons($current_user_id, 3);
 
 // Формируем итоговый массив: сначала активный урок, затем пройденные
 $last_tasks = [];
@@ -122,10 +23,10 @@ if ($active_lesson_result) {
         'status' => 'in_progress',
         'status_class' => 'status-line-indicator_orange',
         'status_text' => 'У процесі',
-        'title' => $active_lesson_result->lesson_title,
-        'course' => $active_lesson_result->course_title,
-        'points' => $active_lesson_result->completion_points ?? 5,
-        'lesson_id' => $active_lesson_result->lesson_id
+        'title' => $active_lesson_result['lesson_title'],
+        'course' => $active_lesson_result['course_title'],
+        'points' => $active_lesson_result['completion_points'] ?? 5,
+        'lesson_id' => $active_lesson_result['lesson_id']
     ];
 }
 
@@ -140,10 +41,10 @@ foreach ($completed_lessons as $completed) {
         'status' => 'open',
         'status_class' => 'status-line-indicator_green',
         'status_text' => 'Виконаний',
-        'title' => $completed->lesson_title,
-        'course' => $completed->course_title,
-        'points' => $completed->completion_points ?? 5,
-        'lesson_id' => $completed->lesson_id
+        'title' => $completed['lesson_title'],
+        'course' => $completed['course_title'],
+        'points' => $completed['completion_points'] ?? 5,
+        'lesson_id' => $completed['lesson_id']
     ];
     
     $completed_count++;
@@ -185,7 +86,7 @@ if (empty($last_tasks)) {
                     <div class="account-last-tasks-item__details">
                         <div class="text-small account-last-tasks-item__amount">+<?php echo esc_html($task['points']); ?></div>
                         <?php if (isset($task['lesson_id'])) : ?>
-                            <a href="<?php echo esc_url(site_url('/lesson/?id=' . $task['lesson_id'])); ?>" class="account-last-tasks-item__link">
+                            <a href="<?php echo esc_url(cryptoschool_get_lesson_url($task['lesson_id'])); ?>" class="account-last-tasks-item__link">
                                 <span class="icon-play-triangle-right"></span>
                             </a>
                         <?php else : ?>

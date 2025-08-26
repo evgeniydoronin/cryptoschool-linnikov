@@ -9,14 +9,19 @@
 // Подключение к WordPress
 require_once('wp-load.php');
 
-// Подключение необходимых файлов плагина
-require_once('wp-content/plugins/cryptoschool/includes/models/class-cryptoschool-model-user-streak.php');
-require_once('wp-content/plugins/cryptoschool/includes/models/class-cryptoschool-model-points-history.php');
-require_once('wp-content/plugins/cryptoschool/includes/models/class-cryptoschool-model-user-lesson-progress.php');
-require_once('wp-content/plugins/cryptoschool/includes/repositories/class-cryptoschool-repository-user-streak.php');
-require_once('wp-content/plugins/cryptoschool/includes/repositories/class-cryptoschool-repository-points-history.php');
-require_once('wp-content/plugins/cryptoschool/includes/repositories/class-cryptoschool-repository-user-lesson-progress.php');
-require_once('wp-content/plugins/cryptoschool/includes/repositories/class-cryptoschool-repository-lesson.php');
+// ⚠️  ВНИМАНИЕ: Этот тестовый файл использует старую архитектуру!
+// Система мигрирована на Custom Post Types, но сервис баллов еще не подключен к хукам
+// Данный файл НЕ РАБОТАЕТ с актуальной архитектурой
+
+// Подключение WordPress helper функций вместо старых классов
+if (file_exists('wp-content/themes/cryptoschool/inc/wpml-helpers.php')) {
+    require_once('wp-content/themes/cryptoschool/inc/wpml-helpers.php');
+}
+
+echo "❌ ТЕСТОВЫЙ ФАЙЛ УСТАРЕЛ!\n";
+echo "Система мигрирована на Custom Post Types, но система баллов не интегрирована.\n";
+echo "Используйте test-real-user-points.php для анализа текущего состояния.\n\n";
+exit;
 
 /**
  * Класс для тестирования системы начисления баллов
@@ -59,13 +64,20 @@ class PointsSystemTester {
         // Предоставляем доступ к пакету курсов
         $this->grant_package_access();
 
-        // Получаем список уроков для тестирования
-        $lessons = $wpdb->get_results("SELECT id FROM {$wpdb->prefix}cryptoschool_lessons ORDER BY id LIMIT 15");
+        // Получаем список уроков для тестирования из Custom Post Types
+        $lessons = get_posts([
+            'post_type' => 'cryptoschool_lesson',
+            'post_status' => 'publish',
+            'numberposts' => 15,
+            'orderby' => 'menu_order',
+            'order' => 'ASC'
+        ]);
+        
         if (empty($lessons)) {
-            die("Ошибка: Не найдены уроки для тестирования. Убедитесь, что в базе данных есть уроки.\n");
+            die("Ошибка: Не найдены уроки для тестирования. Убедитесь, что созданы Custom Post Types уроков.\n");
         }
         
-        $this->lesson_ids = array_map(function($lesson) { return $lesson->id; }, $lessons);
+        $this->lesson_ids = array_map(function($lesson) { return $lesson->ID; }, $lessons);
 
         // Очищаем данные перед тестированием
         $this->clean_test_data();

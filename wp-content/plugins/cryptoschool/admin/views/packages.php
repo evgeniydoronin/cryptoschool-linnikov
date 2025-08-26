@@ -182,8 +182,8 @@ if (!defined('ABSPATH')) {
                         <?php foreach ($courses as $course) : ?>
                             <div class="cryptoschool-checkbox-item">
                                 <label>
-                                    <input type="checkbox" name="course_ids[]" value="<?php echo esc_attr($course->id); ?>">
-                                    <?php echo esc_html($course->title); ?>
+                                    <input type="checkbox" name="course_ids[]" value="<?php echo esc_attr($course->ID); ?>">
+                                    <?php echo esc_html($course->post_title); ?>
                                 </label>
                             </div>
                         <?php endforeach; ?>

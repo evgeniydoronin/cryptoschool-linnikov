@@ -19,6 +19,19 @@ if (!is_user_logged_in()) {
 // Получаем ID урока из GET-параметра
 $lesson_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
+// Получаем trid урока для единого прогресса независимо от языка
+global $wpdb;
+$lesson_trid = $wpdb->get_var($wpdb->prepare(
+    "SELECT trid FROM {$wpdb->prefix}icl_translations 
+     WHERE element_id = %d AND element_type = %s",
+    $lesson_id, 'post_cryptoschool_lesson'
+));
+
+// Если trid не найден (WPML не активен или урок не переведен), используем lesson_id как fallback
+if (!$lesson_trid) {
+    $lesson_trid = $lesson_id;
+}
+
 // Получаем текущего пользователя
 $current_user_id = get_current_user_id();
 
@@ -35,44 +48,114 @@ if (!$accessibility_result['accessible']) {
     exit;
 }
 
-// Получаем данные урока из базы данных
-$lesson_repository = new CryptoSchool_Repository_Lesson();
-$lesson_model = $lesson_repository->find($lesson_id);
+// Получаем данные урока из новой архитектуры Custom Post Types
+$lesson_post = get_post($lesson_id);
 
-// Получаем данные курса
-$course_repository = new CryptoSchool_Repository_Course();
-$course_model = $course_repository->find($lesson_model->getAttribute('course_id'));
-
-// Инициализируем репозиторий прогресса пользователя
-$user_lesson_progress_repository = new CryptoSchool_Repository_User_Lesson_Progress();
-
-// Получаем прогресс пользователя по уроку
-$user_progress = $user_lesson_progress_repository->get_user_lesson_progress($current_user_id, $lesson_id);
-
-// Получаем задания урока
-$task_repository = new CryptoSchool_Repository_Lesson_Task();
-$tasks = $task_repository->get_lesson_tasks($lesson_id);
-
-// Получаем прогресс пользователя по заданиям
-$user_task_progress_repository = new CryptoSchool_Repository_User_Task_Progress();
-$user_task_progress = [];
-foreach ($tasks as $task) {
-    $progress = $user_task_progress_repository->get_user_task_progress($current_user_id, $task->id);
-    $user_task_progress[$task->id] = $progress ? $progress->is_completed : false;
+if (!$lesson_post || $lesson_post->post_type !== 'cryptoschool_lesson' || $lesson_post->post_status !== 'publish') {
+    // Если урок не найден в новой архитектуре, перенаправляем на страницу курсов
+    wp_redirect(site_url('/courses/'));
+    exit;
 }
 
-// Определяем, все ли задания выполнены
-$all_tasks_completed = true;
-foreach ($user_task_progress as $is_completed) {
-    if (!$is_completed) {
-        $all_tasks_completed = false;
-        break;
+// Создаем объект урока для совместимости со старым кодом
+$lesson_model = (object) [
+    'id' => $lesson_post->ID,
+    'title' => $lesson_post->post_title,
+    'content' => $lesson_post->post_content,
+    'video_url' => get_post_meta($lesson_post->ID, 'video_url', true),
+    'course_id' => null // Будет определен ниже
+];
+
+// Находим курс, к которому относится урок
+$course_posts = get_posts([
+    'post_type' => 'cryptoschool_course',
+    'post_status' => 'publish',
+    'numberposts' => -1,
+    'meta_query' => [
+        [
+            'key' => 'choose_lesson',
+            'value' => '"' . $lesson_id . '"',
+            'compare' => 'LIKE'
+        ]
+    ]
+]);
+
+if (empty($course_posts)) {
+    // Если курс не найден, перенаправляем на страницу курсов
+    wp_redirect(site_url('/courses/'));
+    exit;
+}
+
+$course_post = $course_posts[0];
+$course_table_id = get_post_meta($course_post->ID, '_cryptoschool_table_id', true);
+if (!$course_table_id) {
+    $course_table_id = $course_post->ID;
+}
+
+// Создаем объект курса для совместимости
+$course_model = (object) [
+    'id' => $course_table_id,
+    'title' => $course_post->post_title
+];
+
+$lesson_model->course_id = $course_table_id;
+
+// Получаем задания урока из ACF
+$acf_tasks = get_field('zadaniya_uroka', $lesson_id);
+$tasks = [];
+
+if ($acf_tasks && is_array($acf_tasks)) {
+    foreach ($acf_tasks as $index => $task) {
+        if (isset($task['punkt']) && !empty($task['punkt'])) {
+            $tasks[] = (object) [
+                'id' => $lesson_trid * 1000 + $index,
+                'title' => $task['punkt'],
+                'order' => $index
+            ];
+        }
     }
 }
 
-// Получаем предыдущий и следующий уроки
-$prev_lesson = $lesson_repository->get_previous_lesson($lesson_id);
-$next_lesson = $lesson_repository->get_next_lesson($lesson_id);
+// Получаем все уроки курса для навигации
+$course_lessons = get_field('choose_lesson', $course_post->ID);
+$current_lesson_index = -1;
+$prev_lesson = null;
+$next_lesson = null;
+
+if ($course_lessons && is_array($course_lessons)) {
+    foreach ($course_lessons as $index => $course_lesson) {
+        // Обрабатываем как объект WP_Post или массив
+        $lesson_post_id = is_object($course_lesson) ? $course_lesson->ID : (is_array($course_lesson) ? $course_lesson['ID'] : intval($course_lesson));
+        
+        if ($lesson_post_id == $lesson_id) {
+            $current_lesson_index = $index;
+            break;
+        }
+    }
+    
+    if ($current_lesson_index > 0) {
+        $prev_lesson_data = $course_lessons[$current_lesson_index - 1];
+        $prev_lesson = is_object($prev_lesson_data) ? $prev_lesson_data : get_post(intval($prev_lesson_data));
+    }
+    if ($current_lesson_index < count($course_lessons) - 1) {
+        $next_lesson_data = $course_lessons[$current_lesson_index + 1];
+        $next_lesson = is_object($next_lesson_data) ? $next_lesson_data : get_post(intval($next_lesson_data));
+    }
+}
+
+// Инициализируем переменные
+$user_progress = null;
+$user_task_progress = [];
+$all_tasks_completed = true;
+
+// Получаем прогресс пользователя по уроку из базы данных
+global $wpdb;
+$progress_query = "
+    SELECT progress_percent, is_completed, completed_at, updated_at
+    FROM {$wpdb->prefix}cryptoschool_user_lesson_progress 
+    WHERE user_id = %d AND lesson_id = %d
+";
+$user_progress = $wpdb->get_row($wpdb->prepare($progress_query, $current_user_id, $lesson_trid));
 
 // Обработка отправки формы
 $form_submitted = false;
@@ -88,26 +171,123 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['complete_lesson'])) {
         // Обновляем прогресс по заданиям
         foreach ($tasks as $task) {
             $is_completed = in_array($task->id, $completed_tasks);
-            $user_task_progress_repository->update_progress($current_user_id, $lesson_id, $task->id, $is_completed);
+            
+            // Проверяем существует ли запись прогресса для данного задания
+            $existing = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}cryptoschool_user_task_progress 
+                 WHERE user_id = %d AND lesson_id = %d AND task_id = %s",
+                $current_user_id, $lesson_trid, $task->id
+            ));
+            
+            if ($existing) {
+                // Обновляем существующую запись
+                $wpdb->update(
+                    $wpdb->prefix . 'cryptoschool_user_task_progress',
+                    [
+                        'is_completed' => $is_completed ? 1 : 0,
+                        'completed_at' => $is_completed ? current_time('mysql') : null
+                    ],
+                    [
+                        'user_id' => $current_user_id,
+                        'lesson_id' => $lesson_trid,
+                        'task_id' => $task->id
+                    ]
+                );
+            } else {
+                // Создаем новую запись
+                $wpdb->insert(
+                    $wpdb->prefix . 'cryptoschool_user_task_progress',
+                    [
+                        'user_id' => $current_user_id,
+                        'lesson_id' => $lesson_trid,
+                        'task_id' => $task->id,
+                        'is_completed' => $is_completed ? 1 : 0,
+                        'completed_at' => $is_completed ? current_time('mysql') : null
+                    ]
+                );
+            }
         }
         
         // Если все задания выполнены, отмечаем урок как завершенный
         if (count($completed_tasks) === count($tasks)) {
-            $user_lesson_progress_repository->update_progress($current_user_id, $lesson_id, true, 100);
+            // Обновляем или создаем запись о завершении урока
+            $existing_progress = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}cryptoschool_user_lesson_progress 
+                 WHERE user_id = %d AND lesson_id = %d",
+                $current_user_id, $lesson_trid
+            ));
+            
+            if ($existing_progress) {
+                $wpdb->update(
+                    $wpdb->prefix . 'cryptoschool_user_lesson_progress',
+                    [
+                        'is_completed' => 1,
+                        'progress_percent' => 100,
+                        'completed_at' => current_time('mysql'),
+                        'updated_at' => current_time('mysql')
+                    ],
+                    ['user_id' => $current_user_id, 'lesson_id' => $lesson_trid]
+                );
+            } else {
+                $wpdb->insert(
+                    $wpdb->prefix . 'cryptoschool_user_lesson_progress',
+                    [
+                        'user_id' => $current_user_id,
+                        'lesson_id' => $lesson_trid,
+                        'is_completed' => 1,
+                        'progress_percent' => 100,
+                        'completed_at' => current_time('mysql'),
+                        'updated_at' => current_time('mysql')
+                    ]
+                );
+            }
+            
+            // Вызываем action для начисления баллов
+            error_log("DEBUG: Вызываем do_action('cryptoschool_lesson_completed', $current_user_id, $lesson_trid)");
+            do_action('cryptoschool_lesson_completed', $current_user_id, $lesson_trid);
+            error_log("DEBUG: do_action завершен");
+            
             $form_success = true;
             $form_message = __('Урок успешно завершен!', 'cryptoschool');
-            
-            // Обновляем прогресс пользователя
-            $user_progress = $user_lesson_progress_repository->get_user_lesson_progress($current_user_id, $lesson_id);
         } else {
-            $progress_percent = count($completed_tasks) * 100 / count($tasks);
-            $user_lesson_progress_repository->update_progress($current_user_id, $lesson_id, false, $progress_percent);
+            $progress_percent = count($completed_tasks) > 0 ? round(count($completed_tasks) * 100 / count($tasks)) : 0;
+            
+            // Обновляем или создаем запись о прогрессе урока
+            $existing_progress = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}cryptoschool_user_lesson_progress 
+                 WHERE user_id = %d AND lesson_id = %d",
+                $current_user_id, $lesson_id
+            ));
+            
+            if ($existing_progress) {
+                $wpdb->update(
+                    $wpdb->prefix . 'cryptoschool_user_lesson_progress',
+                    [
+                        'is_completed' => 0,
+                        'progress_percent' => $progress_percent,
+                        'updated_at' => current_time('mysql')
+                    ],
+                    ['user_id' => $current_user_id, 'lesson_id' => $lesson_trid]
+                );
+            } else {
+                $wpdb->insert(
+                    $wpdb->prefix . 'cryptoschool_user_lesson_progress',
+                    [
+                        'user_id' => $current_user_id,
+                        'lesson_id' => $lesson_trid,
+                        'is_completed' => 0,
+                        'progress_percent' => $progress_percent,
+                        'updated_at' => current_time('mysql')
+                    ]
+                );
+            }
+            
             $form_success = true;
             $form_message = __('Прогресс сохранен. Для завершения урока выполните все задания.', 'cryptoschool');
-            
-            // Обновляем прогресс пользователя
-            $user_progress = $user_lesson_progress_repository->get_user_lesson_progress($current_user_id, $lesson_id);
         }
+        
+        // Обновляем данные прогресса пользователя
+        $user_progress = $wpdb->get_row($wpdb->prepare($progress_query, $current_user_id, $lesson_trid));
         
         $form_submitted = true;
     } else {
@@ -119,8 +299,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['complete_lesson'])) {
 // Получаем обновленный прогресс по заданиям
 $user_task_progress = [];
 foreach ($tasks as $task) {
-    $progress = $user_task_progress_repository->get_user_task_progress($current_user_id, $task->id);
-    $user_task_progress[$task->id] = $progress ? $progress->is_completed : false;
+    $progress = $wpdb->get_var($wpdb->prepare(
+        "SELECT is_completed FROM {$wpdb->prefix}cryptoschool_user_task_progress 
+         WHERE user_id = %d AND lesson_id = %d AND task_id = %s",
+        $current_user_id, $lesson_trid, $task->id
+    ));
+    $user_task_progress[$task->id] = (bool)$progress;
 }
 
 // Определяем, все ли задания выполнены
@@ -158,16 +342,19 @@ get_header();
                                 <h6 class="text-small account-article__pretitle">
                                     <?php 
                                     // Модуль - это курс, выводим название курса со ссылкой на страницу курса
-                                    $course_id = $course_model->getAttribute('id');
-                                    $course_title = $course_model->getAttribute('title');
-                                    $course_url = site_url('/course/?id=' . $course_id);
+                                    $course_id = isset($course_model->id) ? $course_model->id : (method_exists($course_model, 'getAttribute') ? $course_model->getAttribute('id') : null);
+                                    $course_title = isset($course_model->title) ? $course_model->title : (method_exists($course_model, 'getAttribute') ? $course_model->getAttribute('title') : '');
+                                    $course_url = cryptoschool_get_localized_url('/course/?id=' . $course_id);
                                     ?>
                                     <a href="<?php echo esc_url($course_url); ?>" class="color-primary">
                                         <?php echo esc_html($course_title); ?>
                                     </a>
                                 </h6>
                                 <h5 class="h6 color-primary account-article__title">
-                                    <?php echo esc_html($lesson_model->getAttribute('title')); ?>
+                                    <?php 
+                                    $lesson_title = isset($lesson_model->title) ? $lesson_model->title : (method_exists($lesson_model, 'getAttribute') ? $lesson_model->getAttribute('title') : '');
+                                    echo esc_html($lesson_title); 
+                                    ?>
                                 </h5>
                             </div>
                             <div class="account-article__header-column">
@@ -181,43 +368,11 @@ get_header();
                         <hr class="account-block__horizontal-row account-article__separator">
                         
                         <div class="account-article-content">
-                            <?php if ($lesson_model->getAttribute('video_url')) : ?>
-                                <div class="account-article-content__block account-article-content__images">
-                                    <div class="video-container">
-                                        <?php
-                                        // Получаем ID видео из URL
-                                        $video_url = $lesson_model->getAttribute('video_url');
-                                        $video_id = '';
-                                        
-                                        // YouTube
-                                        if (strpos($video_url, 'youtube.com') !== false || strpos($video_url, 'youtu.be') !== false) {
-                                            if (preg_match('/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/', $video_url, $matches)) {
-                                                $video_id = $matches[1];
-                                                echo '<iframe width="100%" height="100%" src="https://www.youtube.com/embed/' . esc_attr($video_id) . '" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
-                                            }
-                                        }
-                                        // Vimeo
-                                        elseif (strpos($video_url, 'vimeo.com') !== false) {
-                                            if (preg_match('/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/(?:[^\/]*)\/videos\/|album\/(?:\d+)\/video\/|)(\d+)(?:$|\/|\?)/', $video_url, $matches)) {
-                                                $video_id = $matches[1];
-                                                echo '<iframe src="https://player.vimeo.com/video/' . esc_attr($video_id) . '" width="100%" height="100%" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
-                                            }
-                                        }
-                                        // Другие видео-сервисы
-                                        else {
-                                            echo '<div class="video-fallback">';
-                                            echo '<a href="' . esc_url($video_url) . '" target="_blank" class="button button_filled button_rounded">';
-                                            echo '<span class="button__text">' . __('Смотреть видео', 'cryptoschool') . '</span>';
-                                            echo '</a>';
-                                            echo '</div>';
-                                        }
-                                        ?>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
-
                             <div class="account-article-content__block">
-                                <?php echo wp_kses_post($lesson_model->getAttribute('content')); ?>
+                                <?php 
+                                $lesson_content = isset($lesson_model->content) ? $lesson_model->content : (method_exists($lesson_model, 'getAttribute') ? $lesson_model->getAttribute('content') : '');
+                                echo wp_kses_post($lesson_content); 
+                                ?>
                             </div>
                         </div>
                     </article>
@@ -280,7 +435,7 @@ get_header();
                     <div class="bottom-navigation">
                         <?php if ($prev_lesson) : ?>
                             <!-- Если есть предыдущий урок, показываем кнопку "Попередній урок" -->
-                            <a href="<?php echo esc_url(site_url('/lesson/?id=' . $prev_lesson->getAttribute('id'))); ?>" class="bottom-navigation__item bottom-navigation__previous">
+                            <a href="<?php echo esc_url(cryptoschool_get_localized_url('/lesson/?id=' . $prev_lesson->ID)); ?>" class="bottom-navigation__item bottom-navigation__previous">
                                 <div class="bottom-navigation__arrow">
                                     <span class="icon-nav-arrow-left"></span>
                                 </div>
@@ -292,7 +447,7 @@ get_header();
                             <!-- Если есть следующий урок, показываем кнопку "Наступний урок" -->
                             <?php if ($is_lesson_completed) : ?>
                                 <!-- Если текущий урок пройден, делаем ссылку активной -->
-                                <a href="<?php echo esc_url(site_url('/lesson/?id=' . $next_lesson->getAttribute('id'))); ?>" class="bottom-navigation__item bottom-navigation__next">
+                                <a href="<?php echo esc_url(cryptoschool_get_localized_url('/lesson/?id=' . $next_lesson->ID)); ?>" class="bottom-navigation__item bottom-navigation__next">
                                     <div class="bottom-navigation__label text-small"><?php _e('Наступний урок', 'cryptoschool'); ?></div>
                                     <div class="bottom-navigation__arrow">
                                         <span class="icon-nav-arrow-right"></span>

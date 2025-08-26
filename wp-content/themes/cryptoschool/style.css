@@ -16,3 +16,30 @@ Text Domain: cryptoschool
   object-fit: contain;
   width: 100%;
 }
+
+.account-article-content {
+  font-family: "Inter Tight", sans-serif;
+}
+
+.account-article-content h6 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 25px;
+}
+
+.account-article-content p {
+  font-size: 12px;
+  line-height: 1.4;
+  margin-bottom: 25px;
+}
+
+.wp-block-image img {
+  min-width: 0px;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 15px;
+}
+
+.columns-with-gap {
+    gap: 25px !important;
+}

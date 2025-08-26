@@ -13,6 +13,9 @@ if (file_exists(dirname(__DIR__, 3) . '/vendor/autoload.php')) {
 // Подключение файла кастомизации авторизации
 require_once get_template_directory() . '/inc/auth-customization.php';
 
+// Подключение WPML хелперов
+require_once get_template_directory() . '/inc/wpml-helpers.php';
+
 /**
  * Обновление правил перезаписи URL при активации темы
  */

@@ -54,13 +54,42 @@ class CryptoSchool_Admin_Packages_Controller extends CryptoSchool_Admin_Controll
         $packages = $this->package_service->get_all();
 
         // Получение списка курсов для выбора (Custom Post Types)
-        $courses = get_posts(array(
+        $all_courses = get_posts(array(
             'post_type' => 'cryptoschool_course',
             'post_status' => 'publish',
             'numberposts' => -1,
             'orderby' => 'menu_order',
-            'order' => 'ASC'
+            'order' => 'ASC',
+            'suppress_filters' => false, // Включаем WPML фильтры
+            'meta_query' => array(
+                array(
+                    'key' => '_cryptoschool_table_id',
+                    'compare' => 'EXISTS'
+                )
+            )
         ));
+
+        // Фильтруем курсы, оставляя только по одному на каждый trid для избежания дублирования языковых версий
+        $courses = [];
+        $processed_trids = [];
+        global $wpdb;
+
+        foreach ($all_courses as $course) {
+            // Получаем trid курса
+            $trid = $wpdb->get_var($wpdb->prepare(
+                "SELECT trid FROM {$wpdb->prefix}icl_translations 
+                 WHERE element_id = %d AND element_type = %s",
+                $course->ID, 'post_cryptoschool_course'
+            ));
+            
+            // Если trid не найден (WPML не активен) или еще не обработан
+            if (!$trid || !in_array($trid, $processed_trids)) {
+                $courses[] = $course;
+                if ($trid) {
+                    $processed_trids[] = $trid;
+                }
+            }
+        }
 
         // Отображение страницы
         $this->render_view('packages', array(
@@ -168,7 +197,19 @@ class CryptoSchool_Admin_Packages_Controller extends CryptoSchool_Admin_Controll
         $is_active = isset($_POST['is_active']) ? (int) $_POST['is_active'] : 1;
         $creoin_points = isset($_POST['creoin_points']) ? (int) $_POST['creoin_points'] : 0;
         $features = isset($_POST['features']) ? $_POST['features'] : array();
-        $course_ids = isset($_POST['course_ids']) ? $_POST['course_ids'] : array();
+        $course_post_ids = isset($_POST['course_ids']) ? $_POST['course_ids'] : array();
+        
+        // Преобразуем Post ID в table_id для консистентности с остальной системой
+        $course_ids = array();
+        foreach ($course_post_ids as $post_id) {
+            $table_id = get_post_meta($post_id, '_cryptoschool_table_id', true);
+            if ($table_id) {
+                $course_ids[] = $table_id;
+            } else {
+                // Fallback к Post ID если table_id не найден
+                $course_ids[] = $post_id;
+            }
+        }
 
         // Проверка обязательных полей
         if (empty($title)) {
@@ -223,7 +264,19 @@ class CryptoSchool_Admin_Packages_Controller extends CryptoSchool_Admin_Controll
         $is_active = isset($_POST['is_active']) ? (int) $_POST['is_active'] : 1;
         $creoin_points = isset($_POST['creoin_points']) ? (int) $_POST['creoin_points'] : 0;
         $features = isset($_POST['features']) ? $_POST['features'] : array();
-        $course_ids = isset($_POST['course_ids']) ? $_POST['course_ids'] : array();
+        $course_post_ids = isset($_POST['course_ids']) ? $_POST['course_ids'] : array();
+        
+        // Преобразуем Post ID в table_id для консистентности с остальной системой
+        $course_ids = array();
+        foreach ($course_post_ids as $post_id) {
+            $table_id = get_post_meta($post_id, '_cryptoschool_table_id', true);
+            if ($table_id) {
+                $course_ids[] = $table_id;
+            } else {
+                // Fallback к Post ID если table_id не найден
+                $course_ids[] = $post_id;
+            }
+        }
 
         // Проверка обязательных полей
         if (!$id) {

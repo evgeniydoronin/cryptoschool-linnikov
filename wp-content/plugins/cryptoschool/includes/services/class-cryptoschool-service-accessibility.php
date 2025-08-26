@@ -28,7 +28,7 @@ class CryptoSchool_Service_Accessibility extends CryptoSchool_Service {
      * Проверка доступности курса для пользователя
      * 
      * @param int $user_id ID пользователя
-     * @param int $course_id ID курса
+     * @param int $course_id ID курса (может быть Post ID или Table ID)
      * @return array Результат проверки: ['accessible' => bool, 'redirect_url' => string|null]
      */
     public function check_course_accessibility($user_id, $course_id) {
@@ -37,78 +37,49 @@ class CryptoSchool_Service_Accessibility extends CryptoSchool_Service {
             return ['accessible' => true, 'redirect_url' => null];
         }
         
-        // Получаем репозитории
-        $course_repository = new CryptoSchool_Repository_Course();
+        global $wpdb;
         
-        // Получаем модель курса
-        $course_model = $course_repository->find($course_id);
-        if (!$course_model) {
-            // Если курс не найден, перенаправляем на страницу курсов
-            return [
-                'accessible' => false, 
-                'redirect_url' => site_url('/courses/'),
-                'reason' => 'course_not_found'
-            ];
-        }
+        // Получаем все языковые версии курса для проверки доступа
+        $all_course_versions = cryptoschool_get_all_course_language_versions($course_id);
         
-        // Проверяем, доступен ли курс для пользователя (есть ли у него доступ к пакету с этим курсом)
-        $is_available = $course_model->is_available_for_user($user_id);
-        if (!$is_available) {
-            // Если курс недоступен, перенаправляем на страницу курсов
-            return [
-                'accessible' => false, 
-                'redirect_url' => site_url('/courses/'),
-                'reason' => 'no_access'
-            ];
-        }
-        
-        // Получаем все курсы, доступные пользователю
-        $user_courses = $course_repository->get_user_courses($user_id, [
-            'is_active' => 1,
-            'orderby' => 'c.course_order',
-            'order' => 'ASC'
-        ]);
-        
-        // Проверяем, завершены ли все предыдущие курсы
-        $previous_course_completed = true;
-        foreach ($user_courses as $user_course) {
-            $current_course_id = $user_course->getAttribute('id');
-            
-            // Если дошли до проверяемого курса, прерываем цикл
-            if ($current_course_id == $course_id) {
-                break;
+        // Проверяем доступ для каждой версии курса
+        foreach ($all_course_versions as $version_id) {
+            // Получаем table_id для версии курса
+            $table_id = get_post_meta($version_id, '_cryptoschool_table_id', true);
+            if (!$table_id) {
+                $table_id = $version_id; // Fallback к Post ID
             }
             
-            // Проверяем, завершен ли текущий курс
-            $progress = $user_course->get_user_progress($user_id);
-            $is_completed = ($progress >= 100);
+            // Проверяем, доступен ли курс для пользователя
+            $access_query = "
+                SELECT COUNT(*) as has_access
+                FROM {$wpdb->prefix}cryptoschool_user_access ua
+                JOIN {$wpdb->prefix}cryptoschool_packages p ON ua.package_id = p.id
+                WHERE ua.user_id = %d 
+                AND ua.status = 'active'
+                AND JSON_CONTAINS(p.course_ids, %s)
+            ";
+            $has_access = $wpdb->get_var($wpdb->prepare($access_query, $user_id, '"' . $table_id . '"'));
             
-            // Если текущий курс не завершен, запоминаем это и прерываем цикл
-            if (!$is_completed) {
-                $previous_course_completed = false;
-                $last_available_course_id = $current_course_id;
-                break;
+            if ($has_access) {
+                // Если найден доступ к любой версии курса, предоставляем доступ
+                return ['accessible' => true, 'redirect_url' => null];
             }
         }
         
-        // Если предыдущие курсы не завершены, перенаправляем на последний доступный курс
-        if (!$previous_course_completed) {
-            return [
-                'accessible' => false, 
-                'redirect_url' => site_url('/course/?id=' . $last_available_course_id),
-                'reason' => 'previous_course_not_completed'
-            ];
-        }
-        
-        // Если все проверки пройдены, курс доступен
-        return ['accessible' => true, 'redirect_url' => null];
+        // Если доступ не найден ни к одной версии курса
+        return [
+            'accessible' => false, 
+            'redirect_url' => site_url('/courses/'),
+            'reason' => 'no_access'
+        ];
     }
     
     /**
      * Проверка доступности урока для пользователя
      * 
      * @param int $user_id ID пользователя
-     * @param int $lesson_id ID урока
+     * @param int $lesson_id ID урока (Post ID)
      * @return array Результат проверки: ['accessible' => bool, 'redirect_url' => string|null]
      */
     public function check_lesson_accessibility($user_id, $lesson_id) {
@@ -117,13 +88,10 @@ class CryptoSchool_Service_Accessibility extends CryptoSchool_Service {
             return ['accessible' => true, 'redirect_url' => null];
         }
         
-        // Получаем репозитории
-        $lesson_repository = new CryptoSchool_Repository_Lesson();
+        // Получаем урок из новой архитектуры Custom Post Types
+        $lesson_post = get_post($lesson_id);
         
-        // Получаем модель урока
-        $lesson_model = $lesson_repository->find($lesson_id);
-        if (!$lesson_model) {
-            // Если урок не найден, перенаправляем на страницу курсов
+        if (!$lesson_post || $lesson_post->post_type !== 'cryptoschool_lesson' || $lesson_post->post_status !== 'publish') {
             return [
                 'accessible' => false, 
                 'redirect_url' => site_url('/courses/'),
@@ -131,50 +99,109 @@ class CryptoSchool_Service_Accessibility extends CryptoSchool_Service {
             ];
         }
         
-        // Получаем ID курса, к которому относится урок
-        $course_id = $lesson_model->getAttribute('course_id');
+        // Получаем курс, к которому относится урок, через ACF поля
+        $course_posts = get_posts([
+            'post_type' => 'cryptoschool_course',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+            'meta_query' => [
+                [
+                    'key' => 'choose_lesson',
+                    'value' => '"' . $lesson_id . '"',
+                    'compare' => 'LIKE'
+                ]
+            ]
+        ]);
+        
+        if (empty($course_posts)) {
+            return [
+                'accessible' => false, 
+                'redirect_url' => site_url('/courses/'),
+                'reason' => 'course_not_found_for_lesson'
+            ];
+        }
+        
+        $course_post = $course_posts[0];
+        $course_table_id = get_post_meta($course_post->ID, '_cryptoschool_table_id', true);
+        if (!$course_table_id) {
+            $course_table_id = $course_post->ID;
+        }
         
         // Проверяем доступность курса
-        $course_accessibility = $this->check_course_accessibility($user_id, $course_id);
+        $course_accessibility = $this->check_course_accessibility($user_id, $course_table_id);
+        
         if (!$course_accessibility['accessible']) {
-            // Если курс недоступен, возвращаем результат проверки курса
             return $course_accessibility;
         }
         
-        // Получаем все уроки курса
-        $course_lessons = $lesson_repository->get_course_lessons($course_id, [
-            'orderby' => 'lesson_order',
-            'order' => 'ASC',
-            'is_active' => 1
-        ]);
+        // Получаем все уроки курса из ACF поля choose_lesson
+        $course_lesson_data = get_field('choose_lesson', $course_post->ID);
         
-        // Находим текущий урок в списке
-        $current_lesson_index = -1;
-        foreach ($course_lessons as $index => $course_lesson) {
-            if ($course_lesson->getAttribute('id') == $lesson_id) {
-                $current_lesson_index = $index;
-                break;
+        if (empty($course_lesson_data)) {
+            return ['accessible' => true, 'redirect_url' => null];
+        }
+        
+        // Преобразуем в массив ID уроков
+        $course_lesson_ids = [];
+        if (is_array($course_lesson_data)) {
+            foreach ($course_lesson_data as $item) {
+                if (is_object($item) && isset($item->ID)) {
+                    $course_lesson_ids[] = intval($item->ID);
+                } elseif (is_numeric($item)) {
+                    $course_lesson_ids[] = intval($item);
+                }
             }
         }
         
-        // Если это не первый урок, проверяем, завершен ли предыдущий
-        if ($current_lesson_index > 0) {
-            $user_lesson_progress_repository = new CryptoSchool_Repository_User_Lesson_Progress();
-            $prev_lesson_id = $course_lessons[$current_lesson_index - 1]->getAttribute('id');
-            $prev_lesson_progress = $user_lesson_progress_repository->get_user_lesson_progress($user_id, $prev_lesson_id);
-            $prev_lesson_completed = $prev_lesson_progress ? $prev_lesson_progress->getAttribute('is_completed') : false;
-            
-            // Если предыдущий урок не завершен, перенаправляем на него
-            if (!$prev_lesson_completed) {
-                return [
-                    'accessible' => false, 
-                    'redirect_url' => site_url('/lesson/?id=' . $prev_lesson_id),
-                    'reason' => 'previous_lesson_not_completed'
-                ];
-            }
+        // Находим индекс текущего урока в списке
+        $current_lesson_index = array_search($lesson_id, $course_lesson_ids);
+        
+        if ($current_lesson_index === false) {
+            return [
+                'accessible' => false, 
+                'redirect_url' => site_url('/courses/'),
+                'reason' => 'lesson_not_in_course'
+            ];
         }
         
-        // Если все проверки пройдены, урок доступен
+        // Первый урок всегда доступен
+        if ($current_lesson_index === 0) {
+            return ['accessible' => true, 'redirect_url' => null];
+        }
+        
+        // Для остальных уроков проверяем, завершен ли предыдущий урок
+        $prev_lesson_id = $course_lesson_ids[$current_lesson_index - 1];
+        
+        // Получаем trid предыдущего урока для единого прогресса независимо от языка
+        global $wpdb;
+        $prev_lesson_trid = $wpdb->get_var($wpdb->prepare(
+            "SELECT trid FROM {$wpdb->prefix}icl_translations 
+             WHERE element_id = %d AND element_type = %s",
+            $prev_lesson_id, 'post_cryptoschool_lesson'
+        ));
+        
+        // Если trid не найден (WPML не активен или урок не переведен), используем lesson_id как fallback
+        if (!$prev_lesson_trid) {
+            $prev_lesson_trid = $prev_lesson_id;
+        }
+        
+        // Проверяем прогресс предыдущего урока в новой системе, используя trid для единого прогресса
+        $prev_lesson_progress_query = "
+            SELECT is_completed
+            FROM {$wpdb->prefix}cryptoschool_user_lesson_progress 
+            WHERE user_id = %d AND lesson_id = %d
+        ";
+        $prev_lesson_completed = $wpdb->get_var($wpdb->prepare($prev_lesson_progress_query, $user_id, $prev_lesson_trid));
+        
+        // Если предыдущий урок не завершен, перенаправляем на него
+        if (!$prev_lesson_completed) {
+            return [
+                'accessible' => false, 
+                'redirect_url' => cryptoschool_get_lesson_url($prev_lesson_id),
+                'reason' => 'previous_lesson_not_completed'
+            ];
+        }
+        
         return ['accessible' => true, 'redirect_url' => null];
     }
 }

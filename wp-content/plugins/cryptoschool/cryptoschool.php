@@ -100,6 +100,8 @@ class CryptoSchool {
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-access.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-lesson-progress.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-task-progress.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-points-history.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-leaderboard.php';
     
     // Подключение моделей реферальной системы
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-referral-link.php';
@@ -110,11 +112,18 @@ class CryptoSchool {
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-lesson-task.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-user-lesson-progress.php';
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-user-task-progress.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-points-history.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-user-streak.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-user-leaderboard.php';
     
     // Подключение репозиториев реферальной системы
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-referral-link.php';
     
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-accessibility.php';
+    
+    // Подключение сервиса баллов
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-points.php';
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/models/class-cryptoschool-model-user-streak.php';
     
     // Подключение сервисов реферальной системы
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-referral.php';
@@ -128,6 +137,58 @@ class CryptoSchool {
     
     // Подключение API контроллеров
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/api/class-cryptoschool-api-referral-simple.php';
+    
+    // Инициализация API контроллера реферальной системы
+    new CryptoSchool_API_Referral_Simple();
+    
+    // Добавление rewrite rules для реферальных ссылок
+    add_action('init', function() {
+        add_rewrite_rule(
+            '^ref/([^/]+)/?$', 
+            'index.php?cryptoschool_referral_code=$matches[1]', 
+            'top'
+        );
+    });
+    
+    // Регистрация query var для реферального кода
+    add_filter('query_vars', function($vars) {
+        $vars[] = 'cryptoschool_referral_code';
+        return $vars;
+    });
+    
+    // Обработчик реферальных ссылок
+    add_action('template_redirect', function() {
+        $referral_code = get_query_var('cryptoschool_referral_code');
+        if (!empty($referral_code)) {
+            // Проверяем, что код существует в БД
+            global $wpdb;
+            $link = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}cryptoschool_referral_links WHERE referral_code = %s AND is_active = 1",
+                $referral_code
+            ), ARRAY_A);
+            
+            if ($link) {
+                // Увеличиваем счетчик кликов
+                $wpdb->update(
+                    $wpdb->prefix . 'cryptoschool_referral_links',
+                    ['clicks_count' => $link['clicks_count'] + 1],
+                    ['id' => $link['id']]
+                );
+                
+                // Сохраняем реферальный код в cookie на 30 дней
+                setcookie('cryptoschool_referral_code', $referral_code, time() + (30 * 24 * 60 * 60), '/');
+                
+                // Перенаправляем на главную страницу
+                wp_redirect(home_url('/'));
+                exit;
+            } else {
+                // Неверный код - перенаправляем на 404
+                global $wp_query;
+                $wp_query->set_404();
+                status_header(404);
+            }
+        }
+    });
         
         // Подключение административной части
         if (is_admin()) {
@@ -198,6 +259,7 @@ class CryptoSchool {
             'CryptoSchool_Public_Course',
             'CryptoSchool_Public_Profile',
             'CryptoSchool_Service_Referral',
+            'CryptoSchool_Service_Points',
             'CryptoSchool_Post_Types'
         ];
     }

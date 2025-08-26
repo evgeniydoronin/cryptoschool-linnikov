@@ -75,9 +75,43 @@ class CryptoSchool_Service_Package extends CryptoSchool_Service {
         // Получение пакетов
         $packages = $this->get_all();
 
-        // Получение курсов для выбора
-        $course_service = new CryptoSchool_Service_Course($this->loader);
-        $courses = $course_service->get_all(['is_active' => 1]);
+        // Получение курсов для выбора (Custom Post Types)
+        $all_courses = get_posts(array(
+            'post_type' => 'cryptoschool_course',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+            'orderby' => 'menu_order',
+            'order' => 'ASC',
+            'suppress_filters' => false, // Включаем WPML фильтры
+            'meta_query' => array(
+                array(
+                    'key' => '_cryptoschool_table_id',
+                    'compare' => 'EXISTS'
+                )
+            )
+        ));
+
+        // Фильтруем курсы, оставляя только по одному на каждый trid для избежания дублирования языковых версий
+        $courses = [];
+        $processed_trids = [];
+        global $wpdb;
+
+        foreach ($all_courses as $course) {
+            // Получаем trid курса
+            $trid = $wpdb->get_var($wpdb->prepare(
+                "SELECT trid FROM {$wpdb->prefix}icl_translations 
+                 WHERE element_id = %d AND element_type = %s",
+                $course->ID, 'post_cryptoschool_course'
+            ));
+            
+            // Если trid не найден (WPML не активен) или еще не обработан
+            if (!$trid || !in_array($trid, $processed_trids)) {
+                $courses[] = $course;
+                if ($trid) {
+                    $processed_trids[] = $trid;
+                }
+            }
+        }
 
         // Подключение шаблона
         include plugin_dir_path(dirname(dirname(__FILE__))) . 'admin/views/packages.php';
@@ -188,13 +222,16 @@ class CryptoSchool_Service_Package extends CryptoSchool_Service {
             return [];
         }
 
-        $course_repository = new CryptoSchool_Repository_Course();
+        // Получение курсов через Custom Post Types
+        // Сначала получаем посты по table_id из мета-полей
         $courses = [];
-
-        foreach ($course_ids as $course_id) {
-            $course = $course_repository->find($course_id);
-            if ($course) {
-                $courses[] = $course;
+        foreach ($course_ids as $table_id) {
+            $post_id = CryptoSchool_Post_Types::get_post_id_by_table_id($table_id, 'cryptoschool_course');
+            if ($post_id) {
+                $post = get_post($post_id);
+                if ($post && $post->post_status === 'publish') {
+                    $courses[] = $post;
+                }
             }
         }
 

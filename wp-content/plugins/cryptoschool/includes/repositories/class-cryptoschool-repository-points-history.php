@@ -45,6 +45,7 @@ class CryptoSchool_Repository_Points_History extends CryptoSchool_Repository {
             'limit'   => 0,
             'offset'  => 0,
             'points_type' => '',
+            'lesson_id' => '',
         ];
 
         $args = wp_parse_args($args, $defaults);
@@ -56,6 +57,12 @@ class CryptoSchool_Repository_Points_History extends CryptoSchool_Repository {
         if (!empty($args['points_type'])) {
             $query .= " AND points_type = %s";
             $params[] = $args['points_type'];
+        }
+
+        // Фильтрация по ID урока
+        if (!empty($args['lesson_id'])) {
+            $query .= " AND lesson_id = %d";
+            $params[] = $args['lesson_id'];
         }
 
         // Добавление сортировки

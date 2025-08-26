@@ -30,11 +30,11 @@ class CryptoSchool_Service_Points extends CryptoSchool_Service {
     protected $streak_repository;
 
     /**
-     * Репозиторий уроков
+     * Репозиторий прогресса уроков
      *
-     * @var CryptoSchool_Repository_Lesson
+     * @var CryptoSchool_Repository_User_Lesson_Progress
      */
-    protected $lesson_repository;
+    protected $lesson_progress_repository;
 
     /**
      * Репозиторий рейтинга пользователей
@@ -52,12 +52,15 @@ class CryptoSchool_Service_Points extends CryptoSchool_Service {
         parent::__construct($loader);
         $this->points_repository = new CryptoSchool_Repository_Points_History();
         $this->streak_repository = new CryptoSchool_Repository_User_Streak();
-        $this->lesson_repository = new CryptoSchool_Repository_Lesson();
+        $this->lesson_progress_repository = new CryptoSchool_Repository_User_Lesson_Progress();
         
         // Проверяем существование класса репозитория рейтинга
         if (class_exists('CryptoSchool_Repository_User_Leaderboard')) {
             $this->leaderboard_repository = new CryptoSchool_Repository_User_Leaderboard();
         }
+        
+        // Регистрируем хуки
+        $this->register_hooks();
     }
 
     /**
@@ -87,87 +90,200 @@ class CryptoSchool_Service_Points extends CryptoSchool_Service {
      * Обработка завершения урока
      *
      * @param int $user_id   ID пользователя
-     * @param int $lesson_id ID урока
+     * @param int $lesson_id ID урока (trid для WPML)
      * @return void
      */
     public function process_lesson_completion($user_id, $lesson_id) {
-        // Получение урока
-        $lesson = $this->lesson_repository->find($lesson_id);
-        if (!$lesson) {
-            $this->log_error('Урок не найден', ['lesson_id' => $lesson_id]);
+        // Получаем урок через Custom Post Types
+        // lesson_id может быть trid, поэтому пробуем найти реальный post
+        global $wpdb;
+        
+        $lesson_post_id = $wpdb->get_var($wpdb->prepare(
+            "SELECT element_id FROM {$wpdb->prefix}icl_translations 
+             WHERE trid = %d AND element_type = %s AND language_code = %s",
+            $lesson_id, 'post_cryptoschool_lesson', apply_filters('wpml_current_language', null)
+        ));
+        
+        if (!$lesson_post_id) {
+            $lesson_post_id = $lesson_id; // fallback
+        }
+        
+        $lesson_post = get_post($lesson_post_id);
+        if (!$lesson_post || $lesson_post->post_type !== 'cryptoschool_lesson') {
+            $this->log_error('Урок не найден или не является cryptoschool_lesson', ['lesson_id' => $lesson_id]);
             return;
         }
+        
+        // Проверяем, не начислялись ли уже баллы за этот урок
+        $existing_points = $this->points_repository->get_user_points_history($user_id, [
+            'points_type' => 'lesson',
+            'lesson_id' => $lesson_id
+        ]);
+        
+        if (!empty($existing_points)) {
+            $this->log_info('Баллы за урок уже начислены, пропускаем', [
+                'user_id' => $user_id,
+                'lesson_id' => $lesson_id,
+                'existing_records' => count($existing_points)
+            ]);
+            return;
+        }
+        
+        // Начисляем базовые баллы за урок
+        $lesson_points = 5; // Базовые баллы за урок
+        $this->points_repository->add_lesson_points(
+            $user_id,
+            $lesson_id,
+            $lesson_points,
+            sprintf('Завершение урока "%s"', $lesson_post->post_title)
+        );
         
         // Обработка серии и мульти-уроков
         $this->process_streak_and_multi_lessons($user_id, $lesson_id);
         
         // Проверка завершения курса и начисление бонуса
-        $this->check_course_completion($user_id, $lesson->course_id);
+        $this->check_course_completion($user_id, $lesson_post_id);
         
         // Обновление рейтинга пользователя
         $this->update_user_leaderboard($user_id);
+        
+        $this->log_info('Обработано завершение урока', [
+            'user_id' => $user_id,
+            'lesson_id' => $lesson_id,
+            'lesson_post_id' => $lesson_post_id,
+            'lesson_title' => $lesson_post->post_title
+        ]);
     }
     
     /**
      * Проверка завершения курса и начисление бонуса
      *
-     * @param int $user_id   ID пользователя
-     * @param int $course_id ID курса
+     * @param int $user_id      ID пользователя
+     * @param int $lesson_post_id ID поста урока
      * @return void
      */
-    protected function check_course_completion($user_id, $course_id) {
-        // Проверяем, существует ли класс репозитория курсов
-        if (!class_exists('CryptoSchool_Repository_Course')) {
-            $this->log_error('Класс CryptoSchool_Repository_Course не существует');
+    protected function check_course_completion($user_id, $lesson_post_id) {
+        global $wpdb;
+        
+        // Получаем trid урока для поиска всех переводов
+        $lesson_trid = $wpdb->get_var($wpdb->prepare(
+            "SELECT trid FROM {$wpdb->prefix}icl_translations 
+             WHERE element_id = %d AND element_type = %s",
+            $lesson_post_id, 'post_cryptoschool_lesson'
+        ));
+        
+        if (!$lesson_trid) {
+            $lesson_trid = $lesson_post_id; // fallback если WPML не активен
+        }
+        
+        // Получаем все переводы урока
+        $lesson_translations = $wpdb->get_results($wpdb->prepare(
+            "SELECT element_id FROM {$wpdb->prefix}icl_translations 
+             WHERE trid = %d AND element_type = %s",
+            $lesson_trid, 'post_cryptoschool_lesson'
+        ));
+        
+        // Формируем массив всех ID переводов урока
+        $lesson_ids = [$lesson_post_id]; // включаем исходный ID
+        foreach ($lesson_translations as $translation) {
+            if ($translation->element_id != $lesson_post_id) {
+                $lesson_ids[] = $translation->element_id;
+            }
+        }
+        
+        // Ищем курс по всем переводам урока
+        $course_posts = [];
+        foreach ($lesson_ids as $lesson_id) {
+            $found_courses = get_posts([
+                'post_type' => 'cryptoschool_course',
+                'post_status' => 'publish',
+                'numberposts' => -1,
+                'meta_query' => [
+                    [
+                        'key' => 'choose_lesson',
+                        'value' => '"' . $lesson_id . '"',
+                        'compare' => 'LIKE'
+                    ]
+                ]
+            ]);
+            
+            if (!empty($found_courses)) {
+                $course_posts = $found_courses;
+                break; // Курс найден
+            }
+        }
+        
+        if (empty($course_posts)) {
+            $this->log_error('Курс для урока не найден', [
+                'lesson_post_id' => $lesson_post_id,
+                'lesson_trid' => $lesson_trid,
+                'searched_lesson_ids' => $lesson_ids
+            ]);
             return;
         }
         
-        // Получение курса
-        $course_repository = new CryptoSchool_Repository_Course();
-        $course = $course_repository->find($course_id);
-        if (!$course) {
-            $this->log_error('Курс не найден', ['course_id' => $course_id]);
+        $course_post = $course_posts[0];
+        $course_id = $course_post->ID;
+        
+        // Получаем все уроки курса
+        $lesson_ids = get_field('choose_lesson', $course_id);
+        if (empty($lesson_ids)) {
+            $this->log_error('Уроки курса не найдены в ACF', ['course_id' => $course_id]);
             return;
         }
         
-        // Получение всех уроков курса
-        $lesson_repository = new CryptoSchool_Repository_Lesson();
-        $lessons = $lesson_repository->get_course_lessons($course_id);
-        if (empty($lessons)) {
-            $this->log_error('Уроки курса не найдены', ['course_id' => $course_id]);
-            return;
+        // Преобразуем в массив ID, если это объекты
+        $lesson_post_ids = [];
+        foreach ($lesson_ids as $lesson_data) {
+            $lesson_post_ids[] = is_object($lesson_data) ? $lesson_data->ID : intval($lesson_data);
         }
         
-        // Получение прогресса пользователя по урокам курса
-        $progress_repository = new CryptoSchool_Repository_User_Lesson_Progress();
+        // Проверяем прогресс по всем урокам курса
+        global $wpdb;
         $completed_lessons = 0;
         
-        foreach ($lessons as $lesson) {
-            $progress = $progress_repository->get_user_lesson_progress($user_id, $lesson->id);
-            if ($progress && $progress->is_completed) {
+        foreach ($lesson_post_ids as $check_lesson_id) {
+            // Получаем trid урока для проверки прогресса
+            $lesson_trid = $wpdb->get_var($wpdb->prepare(
+                "SELECT trid FROM {$wpdb->prefix}icl_translations 
+                 WHERE element_id = %d AND element_type = %s",
+                $check_lesson_id, 'post_cryptoschool_lesson'
+            ));
+            
+            if (!$lesson_trid) {
+                $lesson_trid = $check_lesson_id; // fallback
+            }
+            
+            // Проверяем завершен ли урок
+            $is_completed = $wpdb->get_var($wpdb->prepare(
+                "SELECT is_completed FROM {$wpdb->prefix}cryptoschool_user_lesson_progress 
+                 WHERE user_id = %d AND lesson_id = %d AND is_completed = 1",
+                $user_id, $lesson_trid
+            ));
+            
+            if ($is_completed) {
                 $completed_lessons++;
             }
         }
         
-        // Проверка, все ли уроки курса завершены
-        if ($completed_lessons === count($lessons)) {
-            // Проверка, был ли уже начислен бонус за завершение курса
+        // Если все уроки курса завершены
+        if ($completed_lessons === count($lesson_post_ids)) {
+            // Проверяем, не начислялся ли уже бонус за этот курс
             $points_history = $this->points_repository->get_user_points_history($user_id, [
                 'points_type' => 'course_completion',
             ]);
             
             $already_awarded = false;
             foreach ($points_history as $history) {
-                if ($history->description && strpos($history->description, $course->title) !== false) {
+                if ($history->description && strpos($history->description, $course_post->post_title) !== false) {
                     $already_awarded = true;
                     break;
                 }
             }
             
-            // Если бонус еще не был начислен, начисляем его
             if (!$already_awarded) {
                 $course_completion_points = 50; // Бонус за завершение курса
-                $description = sprintf('Бонус за завершение курса "%s"', $course->title);
+                $description = sprintf('Бонус за завершение курса "%s"', $course_post->post_title);
                 
                 $this->points_repository->add_course_completion_points(
                     $user_id,
@@ -178,6 +294,9 @@ class CryptoSchool_Service_Points extends CryptoSchool_Service {
                 $this->log_info('Начислен бонус за завершение курса', [
                     'user_id' => $user_id,
                     'course_id' => $course_id,
+                    'course_title' => $course_post->post_title,
+                    'completed_lessons' => $completed_lessons,
+                    'total_lessons' => count($lesson_post_ids),
                     'points' => $course_completion_points
                 ]);
             }

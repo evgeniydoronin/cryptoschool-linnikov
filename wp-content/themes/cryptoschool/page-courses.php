@@ -19,16 +19,169 @@ if (!is_user_logged_in()) {
 
 get_header();
 
+// Вспомогательные функции для работы с курсами
+if (!function_exists('cryptoschool_get_course_progress')) {
+    /**
+     * Получает прогресс пользователя по курсу через ACF поле choose_lesson
+     *
+     * @param int $user_id ID пользователя
+     * @param int $course_id ID курса (Post ID)
+     * @return float Прогресс в процентах
+     */
+    function cryptoschool_get_course_progress($user_id, $course_id) {
+        // Получаем уроки курса через ACF поле choose_lesson
+        $lessons = cryptoschool_get_course_lessons($course_id);
+        
+        if (empty($lessons)) {
+            return 0;
+        }
+        
+        $total_lessons = count($lessons);
+        $completed_lessons = 0;
+        
+        // Проверяем прогресс по каждому уроку с использованием trid
+        global $wpdb;
+        foreach ($lessons as $lesson) {
+            // Получаем trid урока для единого прогресса независимо от языка
+            $lesson_trid = $wpdb->get_var($wpdb->prepare(
+                "SELECT trid FROM {$wpdb->prefix}icl_translations 
+                 WHERE element_id = %d AND element_type = %s",
+                $lesson->ID, 'post_cryptoschool_lesson'
+            ));
+            
+            // Если trid не найден (WPML не активен или урок не переведен), используем lesson ID как fallback
+            if (!$lesson_trid) {
+                $lesson_trid = $lesson->ID;
+            }
+            
+            // Проверяем прогресс по trid
+            $is_completed = $wpdb->get_var($wpdb->prepare(
+                "SELECT is_completed FROM {$wpdb->prefix}cryptoschool_user_lesson_progress 
+                 WHERE user_id = %d AND lesson_id = %d",
+                $user_id, $lesson_trid
+            ));
+            
+            if ($is_completed) {
+                $completed_lessons++;
+            }
+        }
+        
+        return $total_lessons > 0 ? round(($completed_lessons / $total_lessons) * 100, 2) : 0;
+    }
+}
+
+if (!function_exists('cryptoschool_get_course_lessons')) {
+    /**
+     * Получает уроки курса через ACF поле choose_lesson
+     *
+     * @param int $course_id ID курса (Post ID)
+     * @return array Массив объектов WP_Post уроков
+     */
+    function cryptoschool_get_course_lessons($course_id) {
+        // Получаем связанные уроки через ACF поле choose_lesson
+        $lesson_data = get_field('choose_lesson', $course_id);
+        
+        if (empty($lesson_data)) {
+            return [];
+        }
+        
+        // Преобразуем в массив ID, если получили объекты или смешанные данные
+        $lesson_ids = [];
+        if (is_array($lesson_data)) {
+            foreach ($lesson_data as $item) {
+                if (is_object($item) && isset($item->ID)) {
+                    // Если это объект WP_Post
+                    $lesson_ids[] = intval($item->ID);
+                } elseif (is_numeric($item)) {
+                    // Если это уже ID
+                    $lesson_ids[] = intval($item);
+                } elseif (is_string($item) && is_numeric($item)) {
+                    // Если это строковый ID
+                    $lesson_ids[] = intval($item);
+                }
+            }
+        } elseif (is_numeric($lesson_data)) {
+            // Если получили одиночный ID
+            $lesson_ids[] = intval($lesson_data);
+        }
+        
+        if (empty($lesson_ids)) {
+            return [];
+        }
+        
+        // Получаем посты уроков по ID
+        $lessons = get_posts([
+            'post_type' => 'cryptoschool_lesson',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+            'include' => $lesson_ids,
+            'orderby' => 'post__in' // Сохраняем порядок из ACF поля
+        ]);
+        
+        return $lessons;
+    }
+}
+
 // Получаем текущего пользователя
 $current_user_id = get_current_user_id();
 
-// Получаем только курсы, доступные пользователю
-$course_repository = new CryptoSchool_Repository_Course();
-$courses = $course_repository->get_user_courses($current_user_id, [
-    'is_active' => 1,
-    'orderby' => 'c.course_order',
-    'order' => 'ASC'
-]);
+// Получаем курсы пользователя через новую архитектуру Custom Post Types
+$courses = [];
+
+// Получаем пакеты пользователя
+global $wpdb;
+$user_packages_query = "
+    SELECT p.course_ids 
+    FROM {$wpdb->prefix}cryptoschool_user_access ua
+    JOIN {$wpdb->prefix}cryptoschool_packages p ON ua.package_id = p.id
+    WHERE ua.user_id = %d AND ua.status = 'active'
+";
+$user_packages = $wpdb->get_results($wpdb->prepare($user_packages_query, $current_user_id));
+
+// Собираем все ID курсов из пакетов пользователя
+$course_ids = [];
+foreach ($user_packages as $package) {
+    $package_course_ids = json_decode($package->course_ids, true);
+    if (is_array($package_course_ids)) {
+        $course_ids = array_merge($course_ids, $package_course_ids);
+    }
+}
+
+// Получаем курсы через Custom Post Types, если есть доступ
+if (!empty($course_ids)) {
+    $course_ids = array_unique($course_ids);
+    
+    // Получаем Custom Post Types курсов напрямую по Post ID
+    // Также фильтруем по текущему языку WPML
+    $courses = get_posts([
+        'post_type' => 'cryptoschool_course',
+        'post_status' => 'publish',
+        'numberposts' => -1,
+        'orderby' => 'menu_order',
+        'order' => 'ASC',
+        'include' => $course_ids,
+        'suppress_filters' => false // Включаем WPML фильтры
+    ]);
+    
+    // Дополнительная фильтрация по языку, если WPML активен
+    if (function_exists('icl_get_current_language')) {
+        $current_language = icl_get_current_language();
+        $filtered_courses = [];
+        
+        foreach ($courses as $course) {
+            $course_language = apply_filters('wpml_element_language_code', null, array(
+                'element_id' => $course->ID,
+                'element_type' => 'post_cryptoschool_course'
+            ));
+            
+            if ($course_language === $current_language) {
+                $filtered_courses[] = $course;
+            }
+        }
+        
+        $courses = $filtered_courses;
+    }
+}
 
 // Отладочная информация (закомментирована)
 /*
@@ -96,110 +249,11 @@ try {
 }
 */
 
-// Получаем активный урок с помощью SQL-запроса
-global $wpdb;
-$active_lesson_query = "
-    WITH user_packages AS (
-        -- Получаем пакеты пользователя
-        SELECT 
-            ua.id AS access_id,
-            ua.package_id,
-            p.course_ids
-        FROM {$wpdb->prefix}cryptoschool_user_access ua
-        JOIN {$wpdb->prefix}cryptoschool_packages p ON ua.package_id = p.id
-        WHERE ua.user_id = %d AND ua.status = 'active'
-    ),
-    user_courses AS (
-        -- Получаем курсы из пакетов пользователя и сортируем по ID
-        SELECT 
-            c.id AS course_id,
-            c.title AS course_title,
-            (
-                -- Вычисляем прогресс по курсу
-                SELECT COALESCE(ROUND(
-                    SUM(CASE WHEN ulp.is_completed = 1 THEN 1 ELSE NULL END) * 100.0 / COUNT(*)
-                ), 0)
-                FROM {$wpdb->prefix}cryptoschool_lessons l
-                LEFT JOIN {$wpdb->prefix}cryptoschool_user_lesson_progress ulp 
-                    ON l.id = ulp.lesson_id AND ulp.user_id = %d
-                WHERE l.course_id = c.id AND l.is_active = 1
-            ) AS progress
-        FROM {$wpdb->prefix}cryptoschool_courses c
-        JOIN user_packages up ON JSON_CONTAINS(up.course_ids, CONCAT('\"', c.id, '\"'))
-        WHERE c.is_active = 1
-        ORDER BY c.id ASC
-    ),
-    active_course AS (
-        -- Находим первый незавершенный курс
-        SELECT 
-            course_id,
-            course_title
-        FROM user_courses
-        WHERE progress < 100
-        ORDER BY course_id ASC
-        LIMIT 1
-    ),
-    completed_lessons AS (
-        -- Находим все завершенные уроки в активном курсе
-        SELECT 
-            l.id AS lesson_id,
-            l.lesson_order
-        FROM {$wpdb->prefix}cryptoschool_lessons l
-        JOIN {$wpdb->prefix}cryptoschool_user_lesson_progress ulp 
-            ON l.id = ulp.lesson_id AND ulp.user_id = %d
-        JOIN active_course ac ON l.course_id = ac.course_id
-        WHERE ulp.is_completed = 1
-        ORDER BY l.lesson_order DESC
-        LIMIT 1
-    ),
-    next_lesson AS (
-        -- Находим следующий урок после последнего завершенного
-        SELECT 
-            l.id AS lesson_id,
-            l.title AS lesson_title,
-            l.lesson_order,
-            l.completion_points,
-            ac.course_id,
-            ac.course_title
-        FROM {$wpdb->prefix}cryptoschool_lessons l
-        JOIN active_course ac ON l.course_id = ac.course_id
-        LEFT JOIN completed_lessons cl ON 1=1
-        WHERE l.is_active = 1
-          AND (
-              -- Если есть завершенные уроки, берем следующий по порядку
-              (cl.lesson_id IS NOT NULL AND l.lesson_order > cl.lesson_order)
-              OR
-              -- Если нет завершенных уроков, берем первый урок курса
-              (cl.lesson_id IS NULL)
-          )
-        ORDER BY l.lesson_order ASC
-        LIMIT 1
-    )
-    -- Выводим активный урок
-    SELECT * FROM next_lesson;
-";
-
-$active_lesson_result = $wpdb->get_row($wpdb->prepare($active_lesson_query, $current_user_id, $current_user_id, $current_user_id));
+// Получаем активный урок через новые функции
+$active_lesson_result = cryptoschool_get_user_active_lesson($current_user_id);
 
 // Получаем пройденные уроки
-$completed_lessons_query = "
-    SELECT 
-        l.id AS lesson_id,
-        l.title AS lesson_title,
-        c.id AS course_id,
-        c.title AS course_title,
-        ulp.completed_at,
-        l.completion_points
-    FROM {$wpdb->prefix}cryptoschool_lessons l
-    JOIN {$wpdb->prefix}cryptoschool_courses c ON l.course_id = c.id
-    JOIN {$wpdb->prefix}cryptoschool_user_lesson_progress ulp 
-        ON l.id = ulp.lesson_id AND ulp.user_id = %d
-    WHERE ulp.is_completed = 1
-    ORDER BY ulp.completed_at DESC
-    LIMIT 5;
-";
-
-$completed_lessons = $wpdb->get_results($wpdb->prepare($completed_lessons_query, $current_user_id));
+$completed_lessons = cryptoschool_get_user_completed_lessons($current_user_id, 5);
 
 // Формируем итоговый массив: сначала активный урок, затем пройденные
 $last_tasks = [];
@@ -207,12 +261,12 @@ $last_tasks = [];
 // Добавляем активный урок, если он есть
 if ($active_lesson_result) {
     $last_tasks[] = [
-        'id' => $active_lesson_result->lesson_id,
+        'id' => $active_lesson_result['lesson_id'],
         'status' => 'orange', // активный урок - оранжевый
-        'pretitle' => $active_lesson_result->course_title,
-        'title' => $active_lesson_result->lesson_title,
+        'pretitle' => $active_lesson_result['course_title'],
+        'title' => $active_lesson_result['lesson_title'],
         'subtitle' => 'У процесі',
-        'amount' => '+' . ($active_lesson_result->completion_points ?? 5)
+        'amount' => '+' . ($active_lesson_result['completion_points'] ?? 5)
     ];
 }
 
@@ -224,12 +278,12 @@ foreach ($completed_lessons as $completed) {
     if ($completed_count >= $max_completed) break;
     
     $last_tasks[] = [
-        'id' => $completed->lesson_id,
+        'id' => $completed['lesson_id'],
         'status' => 'green', // пройденный урок - зеленый
-        'pretitle' => $completed->course_title,
-        'title' => $completed->lesson_title,
+        'pretitle' => $completed['course_title'],
+        'title' => $completed['lesson_title'],
         'subtitle' => 'Виконаний',
-        'amount' => '+' . ($completed->completion_points ?? 5)
+        'amount' => '+' . ($completed['completion_points'] ?? 5)
     ];
     
     $completed_count++;
@@ -247,81 +301,117 @@ foreach ($completed_lessons as $completed) {
         <!-- Горизонтальная навигация -->
         <?php get_template_part('template-parts/account/horizontal-navigation'); ?>
         <!-- Блок прогресса обучения -->
+        <?php
+        // Получаем серию пользователя из базы данных
+        $user_streak_query = $wpdb->prepare(
+            "SELECT current_streak, max_streak, last_activity_date, lessons_today 
+             FROM {$wpdb->prefix}cryptoschool_user_streak 
+             WHERE user_id = %d",
+            $current_user_id
+        );
+        $user_streak = $wpdb->get_row($user_streak_query);
+        
+        // Если нет записи о серии, создаем значения по умолчанию
+        if (!$user_streak) {
+            $user_streak = (object) [
+                'current_streak' => 0,
+                'max_streak' => 0,
+                'last_activity_date' => null,
+                'lessons_today' => 0
+            ];
+        }
+        
+        $current_streak = $user_streak->current_streak;
+        $max_streak = $user_streak->max_streak;
+        $lessons_today = $user_streak->lessons_today;
+        $last_activity_date = $user_streak->last_activity_date;
+        
+        // Определяем, какой сегодня день относительно последней активности
+        $today = current_time('Y-m-d');
+        $is_today_active = ($last_activity_date === $today && $lessons_today > 0);
+        
+        // Получаем общие баллы пользователя
+        $total_points = $wpdb->get_var($wpdb->prepare(
+            "SELECT total_points FROM {$wpdb->prefix}cryptoschool_user_leaderboard WHERE user_id = %d",
+            $current_user_id
+        ));
+
+        // Получаем баллы за текущий день
+        $today_points = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(points) FROM {$wpdb->prefix}cryptoschool_points_history 
+             WHERE user_id = %d AND DATE(created_at) = %s",
+            $current_user_id, $today
+        ));
+
+        // Значения по умолчанию если нет данных
+        $total_points = $total_points ?: 0;
+        $today_points = $today_points ?: 0;
+        ?>
         <div class="study-daily-progress palette palette_blurred account-block courses__progress">
             <div class="study-daily-progress__steps">
+                <?php for ($day = 1; $day <= 5; $day++) : ?>
                 <div class="study-daily-progress__step">
                     <div class="study-daily-progress__reward">
-                        <div class="text study-daily-progress__value">+5</div>
+                        <?php if ($day == 5) : ?>
+                            <div class="text-small study-daily-progress__value">
+                                Щоденний<br> відрізок
+                            </div>
+                        <?php else : ?>
+                            <div class="text study-daily-progress__value">
+                                <?php echo $day == 1 ? '0' : '+5'; ?>
+                            </div>
+                        <?php endif; ?>
                         <img src="<?php echo get_template_directory_uri(); ?>/frontend-source/dist/assets/img/shared/star.svg" alt="">
                     </div>
-                    <div class="text-small study-daily-progress__condition">1 день</div>
+                    <div class="text-small study-daily-progress__condition"><?php echo $day; ?> день</div>
                 </div>
-                <div class="study-daily-progress__step">
-                    <div class="study-daily-progress__reward">
-                        <div class="text study-daily-progress__value">+5</div>
-                        <img src="<?php echo get_template_directory_uri(); ?>/frontend-source/dist/assets/img/shared/star.svg" alt="">
-                    </div>
-                    <div class="text-small study-daily-progress__condition">2 день</div>
-                </div>
-                <div class="study-daily-progress__step">
-                    <div class="study-daily-progress__reward">
-                        <div class="text study-daily-progress__value">+5</div>
-                        <img src="<?php echo get_template_directory_uri(); ?>/frontend-source/dist/assets/img/shared/star.svg" alt="">
-                    </div>
-                    <div class="text-small study-daily-progress__condition">3 день</div>
-                </div>
-                <div class="study-daily-progress__step">
-                    <div class="study-daily-progress__reward">
-                        <div class="text study-daily-progress__value">+5</div>
-                        <img src="<?php echo get_template_directory_uri(); ?>/frontend-source/dist/assets/img/shared/star.svg" alt="">
-                    </div>
-                    <div class="text-small study-daily-progress__condition">4 день</div>
-                </div>
-                <div class="study-daily-progress__step">
-                    <div class="study-daily-progress__reward">
-                        <div class="text-small study-daily-progress__value">
-                            Щоденний<br> відрізок
-                        </div>
-                        <img src="<?php echo get_template_directory_uri(); ?>/frontend-source/dist/assets/img/shared/star.svg" alt="">
-                    </div>
-                    <div class="text-small study-daily-progress__condition">5 день</div>
-                </div>
+                <?php endfor; ?>
             </div>
             <div class="study-daily-progress__progress">
                 <div class="study-daily-progress__track">
-                    <div class="study-daily-progress__fill"></div>
+                    <div class="study-daily-progress__fill" style="width: <?php echo min(100, ($current_streak / 5) * 100); ?>%"></div>
                 </div>
                 <div class="study-daily-progress__points">
-                    <div class="study-daily-progress__point study-daily-progress__point_filled">
-                        <div class="study-daily-progress__point-circle">
-                            <span class="icon-check-arrow"></span>
+                    <?php for ($point = 1; $point <= 5; $point++) : ?>
+                        <?php 
+                        $is_filled = ($current_streak >= $point) || ($point == 1 && $is_today_active);
+                        $point_class = $is_filled ? 'study-daily-progress__point study-daily-progress__point_filled' : 'study-daily-progress__point';
+                        ?>
+                        <div class="<?php echo $point_class; ?>">
+                            <div class="study-daily-progress__point-circle">
+                                <span class="icon-check-arrow"></span>
+                            </div>
                         </div>
-                    </div>
-                    <div class="study-daily-progress__point study-daily-progress__point_filled">
-                        <div class="study-daily-progress__point-circle">
-                            <span class="icon-check-arrow"></span>
-                        </div>
-                    </div>
-                    <div class="study-daily-progress__point">
-                        <div class="study-daily-progress__point-circle">
-                            <span class="icon-check-arrow"></span>
-                        </div>
-                    </div>
-                    <div class="study-daily-progress__point">
-                        <div class="study-daily-progress__point-circle">
-                            <span class="icon-check-arrow"></span>
-                        </div>
-                    </div>
-                    <div class="study-daily-progress__point">
-                        <div class="study-daily-progress__point-circle">
-                            <span class="icon-check-arrow"></span>
-                        </div>
-                    </div>
+                    <?php endfor; ?>
                 </div>
             </div>
             <div class="study-daily-progress__hints">
-                <div class="study-daily-progress__hint text-small">Отримайте свою щоденну виногороду вже зараз!</div>
-                <div class="study-daily-progress__hint text-small">Практикуйтесь щодня, щоб не втратити відрізок</div>
+                <!-- Блок с баллами -->
+                
+                <div class="study-daily-progress__hint text-small">💰 Загальні бали: <?php echo $total_points; ?></div>
+                <?php if ($today_points > 0) : ?>
+                    <div class="study-daily-progress__hint text-small">⚡ Бали за сьогодні: <?php echo $today_points; ?></div>
+                <?php endif; ?>
+                
+                <?php if ($current_streak == 0 && !$is_today_active) : ?>
+                    <div class="study-daily-progress__hint text-small">Почніть свою серію сьогодні!</div>
+                    <div class="study-daily-progress__hint text-small">Пройдіть перший урок, щоб почати заробляти бали</div>
+                <?php elseif ($current_streak == 0 && $is_today_active) : ?>
+                    <div class="study-daily-progress__hint text-small">Гарний початок! Продовжуйте завтра!</div>
+                    <div class="study-daily-progress__hint text-small">Пройшли сьогодні: <?php echo $lessons_today; ?> урок<?php echo $lessons_today > 1 ? 'и' : ''; ?></div>
+                <?php elseif ($current_streak >= 1 && $current_streak < 5) : ?>
+                    <div class="study-daily-progress__hint text-small">Серія: <?php echo $current_streak; ?> день! Не втрачайте темп!</div>
+                    <div class="study-daily-progress__hint text-small">
+                        <?php if ($is_today_active) : ?>
+                            Сьогодні пройдено: <?php echo $lessons_today; ?> урок<?php echo $lessons_today > 1 ? 'и' : ''; ?>
+                        <?php else : ?>
+                            Пройдіть урок сьогодні, щоб продовжити серію
+                        <?php endif; ?>
+                    </div>
+                <?php else : ?>
+                    <div class="study-daily-progress__hint text-small">🔥 Щоденна серія досягнута!</div>
+                    <div class="study-daily-progress__hint text-small">Максимальна серія: <?php echo $max_streak; ?> днів</div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -335,54 +425,21 @@ foreach ($completed_lessons as $completed) {
                     <p class="text-small">Курсы не найдены</p>
                 <?php else : ?>
                     <?php
-                    // Отладочная информация
-                    echo '<div style="background-color: #fff; color: #000; padding: 10px; margin-bottom: 20px; border-radius: 5px;">';
-                    echo '<h3>Отладочная информация</h3>';
-                    echo '<p>Количество курсов: ' . count($courses) . '</p>';
-                    echo '<p>ID текущего пользователя: ' . $current_user_id . '</p>';
-
-                    // Проверяем таблицу доступов
-                    global $wpdb;
-                    $access_table = $wpdb->prefix . 'cryptoschool_user_access';
-                    $packages_table = $wpdb->prefix . 'cryptoschool_packages';
-
-                    $query = $wpdb->prepare(
-                        "SELECT a.*, p.course_ids FROM {$access_table} a
-                        INNER JOIN {$packages_table} p ON a.package_id = p.id
-                        WHERE a.user_id = %d AND a.status = 'active'",
-                        $current_user_id
-                    );
-
-                    $accesses = $wpdb->get_results($query);
-
-                    echo '<p>Количество активных доступов: ' . count($accesses) . '</p>';
-
-                    if (!empty($accesses)) {
-                        echo '<ul>';
-                        foreach ($accesses as $access) {
-                            echo '<li>Доступ ID: ' . $access->id . ', Пакет ID: ' . $access->package_id . ', Курсы: ' . $access->course_ids . '</li>';
-                        }
-                        echo '</ul>';
-                    }
-
-                    echo '</div>';
-
                     // Переменная для отслеживания, завершен ли предыдущий курс
                     $previous_course_completed = true;
 
                     foreach ($courses as $course) :
-                        // Получаем ID курса
-                        $course_id = $course->getAttribute('id');
+                        // Получаем ID курса из Custom Post Type
+                        $course_id = get_post_meta($course->ID, '_cryptoschool_table_id', true);
+                        if (!$course_id) {
+                            $course_id = $course->ID; // Fallback к WordPress ID
+                        }
 
-                        // Определяем статус курса для пользователя
-                        $is_available = $course->is_available_for_user($current_user_id);
-                        $progress = $is_available ? $course->get_user_progress($current_user_id) : 0;
-
-                        // Отладочная информация для каждого курса
-                        echo '<div style="background-color: #fff; color: #000; padding: 10px; margin-bottom: 10px; border-radius: 5px;">';
-                        echo '<p>Курс ID: ' . $course_id . ', Название: ' . $course->getAttribute('title') . '</p>';
-                        echo '<p>Доступен: ' . ($is_available ? 'Да' : 'Нет') . ', Прогресс: ' . $progress . '%</p>';
-                        echo '</div>';
+                        // Определяем статус курса для пользователя (пользователь уже имеет доступ, так как курс получен из его пакетов)
+                        $is_available = true;
+                        
+                        // Получаем прогресс пользователя по курсу
+                        $progress = cryptoschool_get_course_progress($current_user_id, $course_id);
 
                         // Определяем статус на основе прогресса, доступности и завершения предыдущего курса
                         if (!$previous_course_completed) {
@@ -397,10 +454,10 @@ foreach ($completed_lessons as $completed) {
                         }
 
                         // Получаем уроки курса для отображения в списке тем
-                        $lessons = $course->get_lessons();
+                        $lessons = cryptoschool_get_course_lessons($course_id);
 
                         // Получаем URL изображения курса
-                        $image_url = $course->get_thumbnail_url('medium');
+                        $image_url = get_the_post_thumbnail_url($course->ID, 'medium');
                         if (empty($image_url)) {
                             $image_url = get_template_directory_uri() . '/frontend-source/dist/assets/img/temp/course-card-illustration.png';
                         }
@@ -413,21 +470,23 @@ foreach ($completed_lessons as $completed) {
                                 <img class="course-card__image" src="<?php echo esc_url($image_url); ?>">
                             </div>
                             <div class="course-card__body">
-                                <div class="h6 course-card__title"><?php echo esc_html($course->getAttribute('title')); ?></div>
+                                <div class="h6 course-card__title"><?php echo esc_html($course->post_title); ?></div>
                                 <ul class="account-list course-card__list">
                                     <?php
                                     // Выводим до 5 уроков в качестве тем курса
                                     $topics_count = 0;
-                                    foreach ($lessons as $lesson) :
-                                        if ($topics_count >= 5) break; // Ограничиваем количество тем
-                                    ?>
-                                        <li><?php echo esc_html($lesson->getAttribute('title')); ?></li>
-                                    <?php
-                                        $topics_count++;
-                                    endforeach;
+                                    if (!empty($lessons)) :
+                                        foreach ($lessons as $lesson) :
+                                            if ($topics_count >= 5) break; // Ограничиваем количество тем
+                                        ?>
+                                            <li><?php echo esc_html($lesson->post_title); ?></li>
+                                        <?php
+                                            $topics_count++;
+                                        endforeach;
+                                    endif;
                                     ?>
                                 </ul>
-                                <?php if (count($lessons) > 5) : ?>
+                                <?php if (!empty($lessons) && count($lessons) > 5) : ?>
                                     <div class="course-card__ellipsis text-small">...</div>
                                 <?php endif; ?>
                             </div>
@@ -437,7 +496,7 @@ foreach ($completed_lessons as $completed) {
                                         <span class="button__text">Зайти в курс</span>
                                     </button>
                                 <?php else : ?>
-                                    <a href="<?php echo esc_url(site_url('/course/?id=' . $course_id)); ?>" class="button button_filled button_rounded button_centered button_block">
+                                    <a href="<?php echo esc_url(cryptoschool_get_course_url($course_id)); ?>" class="button button_filled button_rounded button_centered button_block">
                                         <span class="button__text">Зайти в курс</span>
                                     </a>
                                 <?php endif; ?>
@@ -478,7 +537,7 @@ foreach ($completed_lessons as $completed) {
                                 </div>
                                 <div class="account-last-tasks-item__details">
                                     <div class="text-small account-last-tasks-item__amount"><?php echo esc_html($task['amount']); ?></div>
-                                    <a href="<?php echo esc_url(site_url('/lesson/?id=' . $task['id'])); ?>" class="account-last-tasks-item__link">
+                                    <a href="<?php echo esc_url(cryptoschool_get_lesson_url($task['id'])); ?>" class="account-last-tasks-item__link">
                                         <span class="icon-play-triangle-right"></span>
                                     </a>
                                 </div>

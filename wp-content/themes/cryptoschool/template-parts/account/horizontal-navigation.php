@@ -52,35 +52,35 @@ $current_url = $_SERVER['REQUEST_URI'];
             </div>
         </div>
 
-        <a href="<?php echo esc_url(site_url('/dashboard/')); ?>" class="account-menu-item palette palette_blurred palette_hoverable <?php echo (strpos($current_url, '/dashboard/') !== false) ? 'palette_active account-menu-item_active' : ''; ?>">
+        <a href="<?php echo esc_url(cryptoschool_site_url('/dashboard/')); ?>" class="account-menu-item palette palette_blurred palette_hoverable <?php echo (strpos($current_url, '/dashboard/') !== false) ? 'palette_active account-menu-item_active' : ''; ?>">
             <div class="account-menu-item__icon">
                 <span class="icon-dashboard color-primary"></span>
             </div>
             <div class="account-menu-item__name text color-primary">Dashboard</div>
         </a>
 
-        <a href="<?php echo esc_url(site_url('/courses/')); ?>" class="account-menu-item palette palette_blurred palette_hoverable <?php echo (strpos($current_url, '/courses/') !== false) ? 'palette_active account-menu-item_active' : ''; ?>">
+        <a href="<?php echo esc_url(cryptoschool_site_url('/courses/')); ?>" class="account-menu-item palette palette_blurred palette_hoverable <?php echo (strpos($current_url, '/courses/') !== false) ? 'palette_active account-menu-item_active' : ''; ?>">
             <div class="account-menu-item__icon">
                 <span class="icon-video-play color-primary"></span>
             </div>
             <div class="account-menu-item__name text color-primary">Навчання</div>
         </a>
 
-        <a href="<?php echo esc_url(site_url('/rate/')); ?>" class="account-menu-item palette palette_blurred palette_hoverable <?php echo (strpos($current_url, '/rate/') !== false) ? 'palette_active account-menu-item_active' : ''; ?>">
+        <a href="<?php echo esc_url(cryptoschool_site_url('/rate/')); ?>" class="account-menu-item palette palette_blurred palette_hoverable <?php echo (strpos($current_url, '/rate/') !== false) ? 'palette_active account-menu-item_active' : ''; ?>">
             <div class="account-menu-item__icon">
                 <span class="icon-rate color-primary"></span>
             </div>
             <div class="account-menu-item__name text color-primary">Мій тариф</div>
         </a>
 
-        <a href="<?php echo esc_url(site_url('/referral/')); ?>" class="account-menu-item palette palette_blurred palette_hoverable <?php echo (strpos($current_url, '/referral/') !== false) ? 'palette_active account-menu-item_active' : ''; ?>">
+        <a href="<?php echo esc_url(cryptoschool_site_url('/referral/')); ?>" class="account-menu-item palette palette_blurred palette_hoverable <?php echo (strpos($current_url, '/referral/') !== false) ? 'palette_active account-menu-item_active' : ''; ?>">
             <div class="account-menu-item__icon">
                 <span class="icon-referral color-primary"></span>
             </div>
             <div class="account-menu-item__name text color-primary">Реферальна програма</div>
         </a>
 
-        <a href="<?php echo esc_url(site_url('/settings/')); ?>" class="account-menu-item palette palette_blurred palette_hoverable <?php echo (strpos($current_url, '/settings/') !== false) ? 'palette_active account-menu-item_active' : ''; ?>">
+        <a href="<?php echo esc_url(cryptoschool_site_url('/settings/')); ?>" class="account-menu-item palette palette_blurred palette_hoverable <?php echo (strpos($current_url, '/settings/') !== false) ? 'palette_active account-menu-item_active' : ''; ?>">
             <div class="account-menu-item__icon">
                 <span class="icon-settings color-primary"></span>
             </div>

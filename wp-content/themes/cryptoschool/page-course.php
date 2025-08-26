@@ -12,11 +12,71 @@ if (!defined('ABSPATH')) {
 
 // Если пользователь не авторизован, перенаправляем на страницу входа
 if (!is_user_logged_in()) {
-    wp_redirect(site_url('/sign-in/'));
+    // Функция для генерации URL с учетом текущего языка WPML
+    $current_lang = apply_filters('wpml_current_language', null);
+    $default_lang = apply_filters('wpml_default_language', null);
+    $sign_in_url = ($current_lang && $current_lang !== $default_lang) 
+        ? home_url('/' . $current_lang . '/sign-in/') 
+        : home_url('/sign-in/');
+    wp_redirect($sign_in_url);
     exit;
 }
 
-get_header();
+// Вспомогательные функции для работы с курсами (если еще не определены)
+if (!function_exists('cryptoschool_get_course_progress')) {
+    function cryptoschool_get_course_progress($user_id, $course_id) {
+        global $wpdb;
+        
+        $progress_query = "
+            SELECT COALESCE(ROUND(
+                SUM(CASE WHEN ulp.is_completed = 1 THEN 1 ELSE NULL END) * 100.0 / COUNT(*)
+            ), 0) as progress
+            FROM {$wpdb->prefix}cryptoschool_lessons l
+            LEFT JOIN {$wpdb->prefix}cryptoschool_user_lesson_progress ulp 
+                ON l.id = ulp.lesson_id AND ulp.user_id = %d
+            WHERE l.course_id = %d AND l.is_active = 1
+        ";
+        
+        $result = $wpdb->get_var($wpdb->prepare($progress_query, $user_id, $course_id));
+        return floatval($result);
+    }
+}
+
+if (!function_exists('cryptoschool_check_course_access')) {
+    function cryptoschool_check_course_access($user_id, $course_id) {
+        global $wpdb;
+        
+        // Получаем все языковые версии курса для проверки доступа
+        $all_course_versions = cryptoschool_get_all_course_language_versions($course_id);
+        
+        // Проверяем доступ для каждой версии курса
+        foreach ($all_course_versions as $version_id) {
+            // Получаем table_id для версии курса
+            $table_id = get_post_meta($version_id, '_cryptoschool_table_id', true);
+            if (!$table_id) {
+                $table_id = $version_id; // Fallback к Post ID
+            }
+            
+            $access_query = "
+                SELECT COUNT(*) as has_access
+                FROM {$wpdb->prefix}cryptoschool_user_access ua
+                JOIN {$wpdb->prefix}cryptoschool_packages p ON ua.package_id = p.id
+                WHERE ua.user_id = %d 
+                AND ua.status = 'active'
+                AND JSON_CONTAINS(p.course_ids, %s)
+            ";
+            
+            $result = $wpdb->get_var($wpdb->prepare($access_query, $user_id, '"' . $table_id . '"'));
+            if (intval($result) > 0) {
+                // Если найден доступ к любой версии курса, предоставляем доступ
+                return true;
+            }
+        }
+        
+        // Если доступ не найден ни к одной версии курса
+        return false;
+    }
+}
 
 // Получаем ID курса из GET-параметра
 $course_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
@@ -24,31 +84,111 @@ $course_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 // Получаем текущего пользователя
 $current_user_id = get_current_user_id();
 
-// Инициализируем сервис доступности
-$loader = new CryptoSchool_Loader();
-$accessibility_service = new CryptoSchool_Service_Accessibility($loader);
-
 // Проверяем доступность курса для пользователя
-$accessibility_result = $accessibility_service->check_course_accessibility($current_user_id, $course_id);
+$has_access = cryptoschool_check_course_access($current_user_id, $course_id);
 
-// Если курс недоступен, перенаправляем на соответствующую страницу
-if (!$accessibility_result['accessible']) {
-    wp_redirect($accessibility_result['redirect_url']);
+// Если курс недоступен, перенаправляем на страницу курсов
+if (!$has_access) {
+    wp_redirect(cryptoschool_get_localized_url('/courses/'));
     exit;
 }
 
-// Получаем данные курса из базы данных
-$course_repository = new CryptoSchool_Repository_Course();
-$course_model = $course_repository->find($course_id);
+// Получаем данные курса через Custom Post Types
+$course_post = null;
 
-// Получаем уроки курса
-$lessons = $course_model->get_lessons();
+// Сначала пытаемся найти курс по переданному ID как по Post ID
+$course_post = get_post($course_id);
+if ($course_post && $course_post->post_type === 'cryptoschool_course' && $course_post->post_status === 'publish') {
+    // Курс найден по Post ID
+} else {
+    // Если не найден по Post ID, ищем по _cryptoschool_table_id
+    $course_posts = get_posts([
+        'post_type' => 'cryptoschool_course',
+        'post_status' => 'publish',
+        'numberposts' => 1,
+        'meta_query' => [
+            [
+                'key' => '_cryptoschool_table_id',
+                'value' => $course_id,
+                'compare' => '='
+            ]
+        ]
+    ]);
+    
+    if (!empty($course_posts)) {
+        $course_post = $course_posts[0];
+    } else {
+        // Курс не найден ни по одному из способов
+        wp_redirect(cryptoschool_get_localized_url('/courses/'));
+        exit;
+    }
+}
+
+get_header();
+
+// Получаем уроки курса через ACF поле choose_lesson
+if (!function_exists('cryptoschool_get_course_lessons')) {
+    /**
+     * Получает уроки курса через ACF поле choose_lesson
+     *
+     * @param int $course_id ID курса (Post ID)
+     * @return array Массив объектов WP_Post уроков
+     */
+    function cryptoschool_get_course_lessons($course_id) {
+        // Получаем связанные уроки через ACF поле choose_lesson
+        $lesson_data = get_field('choose_lesson', $course_id);
+        
+        if (empty($lesson_data)) {
+            return [];
+        }
+        
+        // Преобразуем в массив ID, если получили объекты или смешанные данные
+        $lesson_ids = [];
+        if (is_array($lesson_data)) {
+            foreach ($lesson_data as $item) {
+                if (is_object($item) && isset($item->ID)) {
+                    // Если это объект WP_Post
+                    $lesson_ids[] = intval($item->ID);
+                } elseif (is_numeric($item)) {
+                    // Если это уже ID
+                    $lesson_ids[] = intval($item);
+                } elseif (is_string($item) && is_numeric($item)) {
+                    // Если это строковый ID
+                    $lesson_ids[] = intval($item);
+                }
+            }
+        } elseif (is_numeric($lesson_data)) {
+            // Если получили одиночный ID
+            $lesson_ids[] = intval($lesson_data);
+        }
+        
+        if (empty($lesson_ids)) {
+            return [];
+        }
+        
+        // Получаем посты уроков по ID
+        $lessons = get_posts([
+            'post_type' => 'cryptoschool_lesson',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+            'include' => $lesson_ids,
+            'orderby' => 'post__in' // Сохраняем порядок из ACF поля
+        ]);
+        
+        return $lessons;
+    }
+}
+
+// Получаем уроки курса через ACF поле choose_lesson
+$lessons_posts = cryptoschool_get_course_lessons($course_post->ID);
 
 // Организуем уроки в группы для отображения
 $lesson_groups = [];
-foreach ($lessons as $lesson) {
-    $group_id = $lesson->getAttribute('module_id') ?: 0; // Используем module_id как идентификатор группы
-    $group_title = $lesson->getAttribute('module_title') ?: __('Уроки курса', 'cryptoschool');
+global $wpdb;
+
+foreach ($lessons_posts as $lesson_post) {
+    $group_id = get_post_meta($lesson_post->ID, 'module_id', true) ?: 0;
+    $group_title = get_post_meta($lesson_post->ID, 'module_title', true) ?: __('Уроки курса', 'cryptoschool');
     
     if (!isset($lesson_groups[$group_id])) {
         $lesson_groups[$group_id] = [
@@ -64,26 +204,57 @@ foreach ($lessons as $lesson) {
     $lesson_status = 'locked'; // По умолчанию урок заблокирован
     $lesson_status_text = __('Недоступний', 'cryptoschool');
     
-    // Получаем прогресс пользователя по уроку
-    $user_lesson_progress_repository = new CryptoSchool_Repository_User_Lesson_Progress();
-    $user_progress = $user_lesson_progress_repository->get_user_lesson_progress($current_user_id, $lesson->getAttribute('id'));
+    // Получаем trid урока для единого прогресса независимо от языка
+    $lesson_trid = $wpdb->get_var($wpdb->prepare(
+        "SELECT trid FROM {$wpdb->prefix}icl_translations 
+         WHERE element_id = %d AND element_type = %s",
+        $lesson_post->ID, 'post_cryptoschool_lesson'
+    ));
     
-    $lesson_progress = $user_progress ? $user_progress->getAttribute('progress_percent') : 0;
-    $is_completed = $user_progress ? $user_progress->getAttribute('is_completed') : false;
+    // Если trid не найден (WPML не активен или урок не переведен), используем lesson ID как fallback
+    if (!$lesson_trid) {
+        $lesson_trid = $lesson_post->ID;
+    }
+    
+    // Получаем прогресс пользователя по уроку (используем trid для новой архитектуры)
+    $progress_query = "
+        SELECT progress_percent, is_completed 
+        FROM {$wpdb->prefix}cryptoschool_user_lesson_progress 
+        WHERE user_id = %d AND lesson_id = %d
+    ";
+    $user_progress = $wpdb->get_row($wpdb->prepare($progress_query, $current_user_id, $lesson_trid));
+    
+    $lesson_progress = $user_progress ? floatval($user_progress->progress_percent) : 0;
+    $is_completed = $user_progress ? boolval($user_progress->is_completed) : false;
     
     // Проверяем, является ли это первым уроком в группе
-    $is_first_lesson = false;
-    if (count($lesson_groups[$group_id]['lessons']) === 0) {
-        $is_first_lesson = true;
-    }
+    $is_first_lesson = (count($lesson_groups[$group_id]['lessons']) === 0);
     
     // Проверяем, завершен ли предыдущий урок
     $prev_lesson_completed = true;
     if (!$is_first_lesson && count($lesson_groups[$group_id]['lessons']) > 0) {
         $last_lesson_index = count($lesson_groups[$group_id]['lessons']) - 1;
         $prev_lesson_id = $lesson_groups[$group_id]['lessons'][$last_lesson_index]['id'];
-        $prev_lesson_progress = $user_lesson_progress_repository->get_user_lesson_progress($current_user_id, $prev_lesson_id);
-        $prev_lesson_completed = $prev_lesson_progress ? $prev_lesson_progress->getAttribute('is_completed') : false;
+        
+        // Получаем trid предыдущего урока для единого прогресса
+        $prev_lesson_trid = $wpdb->get_var($wpdb->prepare(
+            "SELECT trid FROM {$wpdb->prefix}icl_translations 
+             WHERE element_id = %d AND element_type = %s",
+            $prev_lesson_id, 'post_cryptoschool_lesson'
+        ));
+        
+        // Если trid не найден, используем lesson ID как fallback
+        if (!$prev_lesson_trid) {
+            $prev_lesson_trid = $prev_lesson_id;
+        }
+        
+        $prev_progress_query = "
+            SELECT is_completed 
+            FROM {$wpdb->prefix}cryptoschool_user_lesson_progress 
+            WHERE user_id = %d AND lesson_id = %d
+        ";
+        $prev_progress = $wpdb->get_var($wpdb->prepare($prev_progress_query, $current_user_id, $prev_lesson_trid));
+        $prev_lesson_completed = boolval($prev_progress);
     }
     
     // Первый урок всегда доступен, остальные - только если предыдущий завершен
@@ -102,9 +273,9 @@ foreach ($lessons as $lesson) {
     
     // Добавляем урок в группу
     $lesson_groups[$group_id]['lessons'][] = [
-        'id' => $lesson->getAttribute('id'),
-        'number' => $lesson->getAttribute('lesson_order') ?: count($lesson_groups[$group_id]['lessons']) + 1,
-        'title' => $lesson->getAttribute('title'),
+        'id' => $lesson_post->ID, // Используем Post ID для ссылок
+        'number' => get_post_meta($lesson_post->ID, 'lesson_order', true) ?: (count($lesson_groups[$group_id]['lessons']) + 1),
+        'title' => $lesson_post->post_title,
         'status' => $lesson_status,
         'status_text' => $lesson_status_text
     ];
@@ -140,7 +311,7 @@ foreach ($lesson_groups as &$group) {
             <?php get_template_part('template-parts/account/horizontal-navigation'); ?>
         </div>
 
-        <h5 class="h5 color-primary study__title"><?php echo esc_html($course_model->getAttribute('title')); ?></h5>
+        <h5 class="h5 color-primary study__title"><?php echo esc_html($course_post->post_title); ?></h5>
 
         <div class="study__modules">
             <?php if (empty($lesson_groups)) : ?>
@@ -150,7 +321,7 @@ foreach ($lesson_groups as &$group) {
                     <div class="palette palette_blurred study-module <?php echo $group['opened'] ? 'study-module_opened' : ''; ?>">
                         <div class="study-module__summary">
                             <div class="study-module__left">
-                                <div class="study-module__number text"><?php echo esc_html($course_model->getAttribute('title')); ?></div>
+                                <div class="study-module__number text"><?php echo esc_html($course_post->post_title); ?></div>
                                 <div class="study-module__name text color-primary"><?php echo esc_html($group['title']); ?></div>
                             </div>
                             <div class="study-module__right">
@@ -176,7 +347,7 @@ foreach ($lesson_groups as &$group) {
                                                 <div class="study-module__lesson-number text"><?php echo esc_html($lesson['number']); ?></div>
                                                 <div class="study-module__lesson-name text">
                                                     <?php if ($lesson['status'] === 'done' || $lesson['status'] === 'in-process') : ?>
-                                                        <a href="<?php echo esc_url(site_url('/lesson/?id=' . $lesson['id'])); ?>" class="study-module__lesson-link">
+                                                        <a href="<?php echo esc_url(cryptoschool_get_localized_url('/lesson/?id=' . $lesson['id'])); ?>" class="study-module__lesson-link">
                                                             <?php echo esc_html($lesson['title']); ?>
                                                         </a>
                                                     <?php else : ?>
@@ -197,17 +368,54 @@ foreach ($lesson_groups as &$group) {
 
         <div class="bottom-navigation">
             <?php
-            // Получаем все доступные курсы для пользователя
-            $user_courses = $course_repository->get_user_courses($current_user_id, [
-                'is_active' => 1,
-                'orderby' => 'course_order',
-                'order' => 'ASC'
-            ]);
+            // Получаем все доступные курсы для пользователя через новую архитектуру
+            $user_packages_query = "
+                SELECT p.course_ids 
+                FROM {$wpdb->prefix}cryptoschool_user_access ua
+                JOIN {$wpdb->prefix}cryptoschool_packages p ON ua.package_id = p.id
+                WHERE ua.user_id = %d AND ua.status = 'active'
+            ";
+            $user_packages = $wpdb->get_results($wpdb->prepare($user_packages_query, $current_user_id));
+
+            // Собираем все ID курсов из пакетов пользователя
+            $user_course_ids = [];
+            foreach ($user_packages as $package) {
+                $package_course_ids = json_decode($package->course_ids, true);
+                if (is_array($package_course_ids)) {
+                    $user_course_ids = array_merge($user_course_ids, $package_course_ids);
+                }
+            }
+
+            // Получаем курсы через Custom Post Types
+            $user_courses = [];
+            if (!empty($user_course_ids)) {
+                $user_course_ids = array_unique($user_course_ids);
+                
+                $user_courses = get_posts([
+                    'post_type' => 'cryptoschool_course',
+                    'post_status' => 'publish',
+                    'numberposts' => -1,
+                    'orderby' => 'menu_order',
+                    'order' => 'ASC',
+                    'meta_query' => [
+                        [
+                            'key' => '_cryptoschool_table_id',
+                            'value' => $user_course_ids,
+                            'compare' => 'IN'
+                        ]
+                    ]
+                ]);
+            }
             
             // Находим индекс текущего курса в массиве
             $current_index = -1;
             foreach ($user_courses as $index => $user_course) {
-                if ($user_course->getAttribute('id') == $course_id) {
+                $course_table_id = get_post_meta($user_course->ID, '_cryptoschool_table_id', true);
+                if (!$course_table_id) {
+                    $course_table_id = $user_course->ID;
+                }
+                
+                if ($course_table_id == $course_id) {
                     $current_index = $index;
                     break;
                 }
@@ -219,7 +427,13 @@ foreach ($lesson_groups as &$group) {
             ?>
             
             <?php if ($prev_course) : ?>
-                <a href="<?php echo esc_url(site_url('/course/?id=' . $prev_course->getAttribute('id'))); ?>" class="bottom-navigation__item bottom-navigation__previous">
+                <?php 
+                $prev_course_id = get_post_meta($prev_course->ID, '_cryptoschool_table_id', true);
+                if (!$prev_course_id) {
+                    $prev_course_id = $prev_course->ID;
+                }
+                ?>
+                <a href="<?php echo esc_url(cryptoschool_get_localized_url('/course/?id=' . $prev_course_id)); ?>" class="bottom-navigation__item bottom-navigation__previous">
                     <div class="bottom-navigation__arrow">
                         <span class="icon-nav-arrow-left"></span>
                     </div>
@@ -228,7 +442,13 @@ foreach ($lesson_groups as &$group) {
             <?php endif; ?>
             
             <?php if ($next_course) : ?>
-                <a href="<?php echo esc_url(site_url('/course/?id=' . $next_course->getAttribute('id'))); ?>" class="bottom-navigation__item bottom-navigation__next">
+                <?php 
+                $next_course_id = get_post_meta($next_course->ID, '_cryptoschool_table_id', true);
+                if (!$next_course_id) {
+                    $next_course_id = $next_course->ID;
+                }
+                ?>
+                <a href="<?php echo esc_url(cryptoschool_get_localized_url('/course/?id=' . $next_course_id)); ?>" class="bottom-navigation__item bottom-navigation__next">
                     <div class="bottom-navigation__label text-small">Наступний курс</div>
                     <div class="bottom-navigation__arrow">
                         <span class="icon-nav-arrow-right"></span>

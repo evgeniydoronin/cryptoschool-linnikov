@@ -18,10 +18,62 @@ if (!defined('ABSPATH')) {
 class CryptoSchool_API_Referral_Simple {
 
     /**
+     * Сервис реферальной системы
+     *
+     * @var CryptoSchool_Service_Referral
+     */
+    private $referral_service;
+
+    /**
      * Конструктор класса
      */
     public function __construct() {
         $this->init_hooks();
+    }
+
+    /**
+     * Получение сервиса реферальной системы (ленивая инициализация)
+     *
+     * @return CryptoSchool_Service_Referral
+     */
+    private function get_referral_service() {
+        if (!$this->referral_service) {
+            // Создаем сервис без loader для простого API контроллера
+            require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/repositories/class-cryptoschool-repository-referral-link.php';
+            $this->referral_service = new class() {
+                private $referral_link_repository;
+                
+                public function __construct() {
+                    $this->referral_link_repository = new CryptoSchool_Repository_Referral_Link();
+                }
+                
+                public function create_referral_link($user_id, $link_name, $discount_percent, $commission_percent) {
+                    // Генерируем уникальный код
+                    do {
+                        $referral_code = 'REF' . $user_id . strtoupper(substr(md5(time() . rand()), 0, 6));
+                        $existing = $this->referral_link_repository->where(['referral_code' => $referral_code]);
+                    } while (!empty($existing));
+                    
+                    // Подготавливаем данные для создания
+                    $data = [
+                        'user_id' => $user_id,
+                        'referral_code' => $referral_code,
+                        'link_name' => $link_name,
+                        'discount_percent' => $discount_percent,
+                        'commission_percent' => $commission_percent,
+                        'clicks_count' => 0,
+                        'conversions_count' => 0,
+                        'total_earned' => 0.00,
+                        'is_active' => 1,
+                        'created_at' => current_time('mysql')
+                    ];
+                    
+                    // Создаем ссылку в БД
+                    return $this->referral_link_repository->create($data);
+                }
+            };
+        }
+        return $this->referral_service;
     }
 
     /**
@@ -145,13 +197,37 @@ class CryptoSchool_API_Referral_Simple {
         }
 
         try {
-            // Пока создаем заглушку, но с правильной структурой
-            $new_link = $this->create_mock_referral_link($user_id, $link_name, $discount_percent, $commission_percent);
+            // Используем реальный сервис для создания ссылки
+            $new_link = $this->get_referral_service()->create_referral_link(
+                $user_id,
+                $link_name,
+                $discount_percent,
+                $commission_percent
+            );
 
-            wp_send_json_success(array(
-                'message' => 'Реферальная ссылка создана успешно',
-                'link' => $new_link
-            ));
+            if ($new_link) {
+                // Преобразуем модель в массив для ответа
+                $link_data = array(
+                    'id' => $new_link->getAttribute('id'),
+                    'name' => $new_link->getAttribute('link_name'),
+                    'code' => $new_link->getAttribute('referral_code'),
+                    'url' => site_url('/ref/' . $new_link->getAttribute('referral_code')),
+                    'discount_percent' => (float) $new_link->getAttribute('discount_percent'),
+                    'commission_percent' => (float) $new_link->getAttribute('commission_percent'),
+                    'clicks_count' => (int) $new_link->getAttribute('clicks_count'),
+                    'conversions_count' => (int) $new_link->getAttribute('conversions_count'),
+                    'total_earned' => (float) $new_link->getAttribute('total_earned'),
+                    'is_active' => true,
+                    'created_at' => $new_link->getAttribute('created_at')
+                );
+
+                wp_send_json_success(array(
+                    'message' => 'Реферальная ссылка создана успешно',
+                    'link' => $link_data
+                ));
+            } else {
+                wp_send_json_error('Не удалось создать реферальную ссылку');
+            }
 
         } catch (Exception $e) {
             wp_send_json_error('Ошибка: ' . $e->getMessage());
@@ -593,5 +669,4 @@ class CryptoSchool_API_Referral_Simple {
     }
 }
 
-// Инициализация API контроллера
-new CryptoSchool_API_Referral_Simple();
+// Инициализация API контроллера убрана - теперь он создается через систему плагина
