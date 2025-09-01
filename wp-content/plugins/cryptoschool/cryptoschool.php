@@ -156,9 +156,11 @@ class CryptoSchool {
         return $vars;
     });
     
-    // Обработчик реферальных ссылок
+    // Обработчик реферальных ссылок (приоритет 5 - раньше других)
     add_action('template_redirect', function() {
         $referral_code = get_query_var('cryptoschool_referral_code');
+        error_log('CryptoSchool Referral: Template redirect - query var = ' . ($referral_code ?: 'пустая'));
+        
         if (!empty($referral_code)) {
             // Проверяем, что код существует в БД
             global $wpdb;
@@ -175,8 +177,18 @@ class CryptoSchool {
                     ['id' => $link['id']]
                 );
                 
-                // Сохраняем реферальный код в cookie на 30 дней
-                setcookie('cryptoschool_referral_code', $referral_code, time() + (30 * 24 * 60 * 60), '/');
+                // Сохраняем реферальный код в cookie на 30 дней с правильными параметрами
+                $cookie_domain = parse_url(home_url(), PHP_URL_HOST);
+                setcookie('cryptoschool_referral_code', $referral_code, time() + (30 * 24 * 60 * 60), '/', $cookie_domain, false, false);
+                
+                // Дополнительно сохраняем в сессии WordPress
+                if (!session_id()) {
+                    session_start();
+                }
+                $_SESSION['cryptoschool_referral_code'] = $referral_code;
+                
+                // Логируем установку
+                error_log('CryptoSchool Referral: Установлен код в cookie и сессию: ' . $referral_code . ' для домена: ' . $cookie_domain);
                 
                 // Перенаправляем на главную страницу
                 wp_redirect(home_url('/'));
@@ -188,7 +200,10 @@ class CryptoSchool {
                 status_header(404);
             }
         }
-    });
+    }, 5);
+    
+    // Обработчик регистрации с реферальным кодом
+    add_action('user_register', 'cryptoschool_handle_referral_registration', 20);
         
         // Подключение административной части
         if (is_admin()) {
@@ -289,6 +304,114 @@ class CryptoSchool {
 // Инициализация плагина
 function cryptoschool() {
     return CryptoSchool::get_instance();
+}
+
+/**
+ * Обработчик регистрации пользователя с реферальным кодом
+ *
+ * @param int $user_id ID нового пользователя
+ */
+function cryptoschool_handle_referral_registration($user_id) {
+    // Стартуем сессию если нужно
+    if (!session_id()) {
+        session_start();
+    }
+    
+    // Отладочная информация о доступных cookies и сессии
+    error_log('CryptoSchool Referral: Доступные cookies: ' . print_r($_COOKIE, true));
+    error_log('CryptoSchool Referral: Доступная сессия: ' . print_r($_SESSION, true));
+    
+    $referral_code = null;
+    
+    // Проверяем реферальный код в cookies
+    if (isset($_COOKIE['cryptoschool_referral_code'])) {
+        $referral_code = sanitize_text_field($_COOKIE['cryptoschool_referral_code']);
+        error_log('CryptoSchool Referral: Найден код в cookies: ' . $referral_code);
+    }
+    // Если не найден в cookies, проверяем в сессии
+    elseif (isset($_SESSION['cryptoschool_referral_code'])) {
+        $referral_code = sanitize_text_field($_SESSION['cryptoschool_referral_code']);
+        error_log('CryptoSchool Referral: Найден код в сессии: ' . $referral_code);
+    }
+    
+    if (!$referral_code) {
+        error_log('CryptoSchool Referral: Нет реферального кода в cookies или сессии для пользователя ' . $user_id);
+        return;
+    }
+    error_log('CryptoSchool Referral: Обрабатываем регистрацию с кодом ' . $referral_code . ' для пользователя ' . $user_id);
+    
+    global $wpdb;
+    
+    // Ищем реферальную ссылку по коду
+    $referral_link = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}cryptoschool_referral_links WHERE referral_code = %s AND is_active = 1",
+        $referral_code
+    ), ARRAY_A);
+    
+    if (!$referral_link) {
+        error_log('CryptoSchool Referral: Не найдена активная ссылка с кодом ' . $referral_code);
+        return;
+    }
+    
+    error_log('CryptoSchool Referral: Найдена ссылка ID ' . $referral_link['id'] . ' от пользователя ' . $referral_link['user_id']);
+    
+    // Создаем связь между рефереером и новым пользователем
+    $result = $wpdb->insert(
+        $wpdb->prefix . 'cryptoschool_referral_users',
+        array(
+            'referrer_id' => $referral_link['user_id'],
+            'user_id' => $user_id,
+            'referral_link_id' => $referral_link['id'],
+            'registration_date' => current_time('mysql'),
+            'status' => 'registered'
+        ),
+        array('%d', '%d', '%d', '%s', '%s')
+    );
+    
+    if ($result === false) {
+        error_log('CryptoSchool Referral: Ошибка при создании связи: ' . $wpdb->last_error);
+        return;
+    }
+    
+    $referral_user_id = $wpdb->insert_id;
+    error_log('CryptoSchool Referral: Создана связь ID ' . $referral_user_id . ' между рефереером ' . $referral_link['user_id'] . ' и новым пользователем ' . $user_id);
+    
+    // Обновляем счетчики конверсии в реферальной ссылке
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'cryptoschool_referral_links',
+        [
+            'conversions_count' => $referral_link['conversions_count'] + 1,
+        ],
+        ['id' => $referral_link['id']],
+        ['%d'],
+        ['%d']
+    );
+    
+    // Пересчитываем процент конверсии
+    $new_conversions = $referral_link['conversions_count'] + 1;
+    $clicks = max(1, $referral_link['clicks_count']); // Избегаем деления на ноль
+    $conversion_rate = round(($new_conversions / $clicks) * 100, 2);
+    
+    $wpdb->update(
+        $wpdb->prefix . 'cryptoschool_referral_links',
+        ['conversion_rate' => $conversion_rate],
+        ['id' => $referral_link['id']],
+        ['%f'],
+        ['%d']
+    );
+    
+    error_log('CryptoSchool Referral: Обновлены счетчики - конверсии: ' . $new_conversions . ', процент: ' . $conversion_rate . '%');
+    
+    // Очищаем cookie и сессию после успешной обработки
+    $cookie_domain = parse_url(home_url(), PHP_URL_HOST);
+    setcookie('cryptoschool_referral_code', '', time() - 3600, '/', $cookie_domain);
+    
+    if (isset($_SESSION['cryptoschool_referral_code'])) {
+        unset($_SESSION['cryptoschool_referral_code']);
+    }
+    
+    // Логируем событие для статистики
+    error_log('CryptoSchool Referral: ✅ УСПЕШНО: Пользователь ' . $user_id . ' зарегистрирован по реферальной ссылке пользователя ' . $referral_link['user_id']);
 }
 
 // Запуск плагина

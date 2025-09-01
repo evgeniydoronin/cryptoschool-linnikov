@@ -26,14 +26,95 @@ if (!defined('ABSPATH')) {
     
     <div class="cryptoschool-admin-tabs">
         <ul class="cryptoschool-admin-tabs-nav">
-            <li class="active"><a href="#influencers"><?php _e('Инфлюенсеры', 'cryptoschool'); ?></a></li>
+            <li class="active"><a href="#statistics"><?php _e('Статистика', 'cryptoschool'); ?></a></li>
+            <li><a href="#referral-links"><?php _e('Реферальные ссылки', 'cryptoschool'); ?></a></li>
+            <li><a href="#recent-referrals"><?php _e('Реферальные связи', 'cryptoschool'); ?></a></li>
+            <li><a href="#transactions"><?php _e('Транзакции', 'cryptoschool'); ?></a></li>
+            <li><a href="#influencers"><?php _e('Инфлюенсеры', 'cryptoschool'); ?></a></li>
             <li><a href="#withdrawal-requests"><?php _e('Запросы на вывод', 'cryptoschool'); ?></a></li>
-            <li><a href="#statistics"><?php _e('Статистика', 'cryptoschool'); ?></a></li>
         </ul>
         
         <div class="cryptoschool-admin-tabs-content">
+            <!-- Вкладка "Статистика" -->
+            <div id="statistics" class="cryptoschool-admin-tab active">
+                <div class="cryptoschool-admin-card">
+                    <h2><?php _e('Статистика реферальной системы', 'cryptoschool'); ?></h2>
+                    
+                    <div class="cryptoschool-admin-card-content">
+                        <div class="cryptoschool-admin-stats-grid">
+                            <div class="cryptoschool-admin-stats-card">
+                                <h3><?php _e('Общая статистика', 'cryptoschool'); ?></h3>
+                                <ul>
+                                    <li><?php _e('Всего реферальных ссылок:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['total']['referral_links']); ?></strong></li>
+                                    <li><?php _e('Всего рефералов:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['total']['referrals']); ?></strong></li>
+                                    <li><?php _e('Всего покупок через реферальные ссылки:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['total']['purchases']); ?></strong></li>
+                                    <li><?php _e('Общая сумма комиссий:', 'cryptoschool'); ?> <strong>$<?php echo number_format($stats['total']['commissions_amount'], 2); ?></strong></li>
+                                    <li><?php _e('Выплачено комиссий:', 'cryptoschool'); ?> <strong>$<?php echo number_format($stats['total']['paid_amount'], 2); ?></strong></li>
+                                </ul>
+                            </div>
+                            
+                            <div class="cryptoschool-admin-stats-card">
+                                <h3><?php _e('Статистика за последний месяц', 'cryptoschool'); ?></h3>
+                                <ul>
+                                    <li><?php _e('Новых реферальных ссылок:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['monthly']['referral_links']); ?></strong></li>
+                                    <li><?php _e('Новых рефералов:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['monthly']['referrals']); ?></strong></li>
+                                    <li><?php _e('Покупок через реферальные ссылки:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['monthly']['purchases']); ?></strong></li>
+                                    <li><?php _e('Сумма комиссий:', 'cryptoschool'); ?> <strong>$<?php echo number_format($stats['monthly']['commissions_amount'], 2); ?></strong></li>
+                                    <li><?php _e('Запросов на вывод:', 'cryptoschool'); ?> <strong><?php echo esc_html($stats['monthly']['withdrawal_requests']); ?></strong></li>
+                                </ul>
+                            </div>
+                            
+                            <div class="cryptoschool-admin-stats-card">
+                                <h3><?php _e('Топ рефоводов', 'cryptoschool'); ?></h3>
+                                <?php if (!empty($stats['top_referrers'])) : ?>
+                                    <ol>
+                                        <?php foreach ($stats['top_referrers'] as $referrer) : ?>
+                                            <li>
+                                                <strong><?php echo esc_html($referrer['user_login']); ?></strong><br>
+                                                <small><?php echo esc_html($referrer['user_email']); ?></small><br>
+                                                <span class="description">
+                                                    <?php printf(__('Заработано: $%s | Рефералов: %d', 'cryptoschool'), 
+                                                        number_format($referrer['total_earned'], 2), 
+                                                        esc_html($referrer['referrals_count'])
+                                                    ); ?>
+                                                </span>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ol>
+                                <?php else : ?>
+                                    <p><?php _e('Нет данных для отображения.', 'cryptoschool'); ?></p>
+                                <?php endif; ?>
+                            </div>
+                            
+                            <div class="cryptoschool-admin-stats-card">
+                                <h3><?php _e('Топ реферальных ссылок', 'cryptoschool'); ?></h3>
+                                <?php if (!empty($stats['top_links'])) : ?>
+                                    <ol>
+                                        <?php foreach ($stats['top_links'] as $link) : ?>
+                                            <li>
+                                                <strong><?php echo esc_html($link['link_name']); ?></strong><br>
+                                                <span class="description">
+                                                    <?php printf(__('Переходы: %d | Конверсии: %d (%.1f%%) | Заработано: $%s', 'cryptoschool'), 
+                                                        esc_html($link['clicks']), 
+                                                        esc_html($link['conversions']),
+                                                        esc_html($link['conversion_rate']),
+                                                        number_format($link['total_earned'], 2)
+                                                    ); ?>
+                                                </span>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ol>
+                                <?php else : ?>
+                                    <p><?php _e('Нет данных для отображения.', 'cryptoschool'); ?></p>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Вкладка "Инфлюенсеры" -->
-            <div id="influencers" class="cryptoschool-admin-tab active">
+            <div id="influencers" class="cryptoschool-admin-tab">
                 <div class="cryptoschool-admin-card">
                     <h2><?php _e('Управление инфлюенсерами', 'cryptoschool'); ?></h2>
                     
@@ -264,6 +345,165 @@ if (!defined('ABSPATH')) {
                                 <?php endif; ?>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Вкладка "Реферальные ссылки" -->
+            <div id="referral-links" class="cryptoschool-admin-tab">
+                <div class="cryptoschool-admin-card">
+                    <h2><?php _e('Все реферальные ссылки', 'cryptoschool'); ?></h2>
+                    
+                    <div class="cryptoschool-admin-card-content">
+                        <?php if (empty($referral_links)) : ?>
+                            <p><?php _e('Реферальные ссылки не найдены.', 'cryptoschool'); ?></p>
+                        <?php else : ?>
+                            <div class="cryptoschool-admin-table-container">
+                                <table class="wp-list-table widefat fixed striped">
+                                    <thead>
+                                        <tr>
+                                            <th><?php _e('Пользователь', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Название', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Код', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Скидка', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Комиссия', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Клики', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Конверсии', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Конверсия %', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Заработано', 'cryptoschool'); ?></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($referral_links as $link) : ?>
+                                            <tr>
+                                                <td>
+                                                    <strong><?php echo esc_html($link->user_login); ?></strong><br>
+                                                    <small><?php echo esc_html($link->user_email); ?></small>
+                                                </td>
+                                                <td><?php echo esc_html($link->link_name); ?></td>
+                                                <td><code><?php echo esc_html($link->referral_code); ?></code></td>
+                                                <td><?php echo esc_html($link->discount_percent); ?>%</td>
+                                                <td><?php echo esc_html($link->commission_percent); ?>%</td>
+                                                <td><?php echo esc_html($link->clicks_count); ?></td>
+                                                <td><?php echo esc_html($link->conversions_count); ?></td>
+                                                <td><?php echo esc_html($link->conversion_rate); ?>%</td>
+                                                <td><strong>$<?php echo number_format($link->total_earned ?: 0, 2); ?></strong></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Вкладка "Реферальные связи" -->
+            <div id="recent-referrals" class="cryptoschool-admin-tab">
+                <div class="cryptoschool-admin-card">
+                    <h2><?php _e('Последние реферальные связи', 'cryptoschool'); ?></h2>
+                    
+                    <div class="cryptoschool-admin-card-content">
+                        <?php if (empty($recent_referrals)) : ?>
+                            <p><?php _e('Реферальные связи не найдены.', 'cryptoschool'); ?></p>
+                        <?php else : ?>
+                            <div class="cryptoschool-admin-table-container">
+                                <table class="wp-list-table widefat fixed striped">
+                                    <thead>
+                                        <tr>
+                                            <th><?php _e('Реферер', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Реферал', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Ссылка', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Статус', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Дата регистрации', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Дата покупки', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Сумма покупки', 'cryptoschool'); ?></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($recent_referrals as $referral) : ?>
+                                            <tr>
+                                                <td><?php echo esc_html($referral->referrer_login); ?></td>
+                                                <td><?php echo esc_html($referral->referred_login); ?></td>
+                                                <td>
+                                                    <?php echo esc_html($referral->link_name); ?><br>
+                                                    <code><?php echo esc_html($referral->referral_code); ?></code>
+                                                </td>
+                                                <td>
+                                                    <span class="<?php echo $referral->status == 'purchased' ? 'text-success' : ''; ?>">
+                                                        <?php echo esc_html($referral->status); ?>
+                                                    </span>
+                                                </td>
+                                                <td><?php echo esc_html($referral->registration_date); ?></td>
+                                                <td><?php echo esc_html($referral->purchase_date ?: '-'); ?></td>
+                                                <td>
+                                                    <?php if($referral->purchase_amount) : ?>
+                                                        <strong>$<?php echo number_format($referral->purchase_amount, 2); ?></strong>
+                                                    <?php else : ?>
+                                                        -
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Вкладка "Транзакции" -->
+            <div id="transactions" class="cryptoschool-admin-tab">
+                <div class="cryptoschool-admin-card">
+                    <h2><?php _e('Последние транзакции', 'cryptoschool'); ?></h2>
+                    
+                    <div class="cryptoschool-admin-card-content">
+                        <?php if (empty($recent_transactions)) : ?>
+                            <p><?php _e('Транзакции не найдены.', 'cryptoschool'); ?></p>
+                        <?php else : ?>
+                            <div class="cryptoschool-admin-table-container">
+                                <table class="wp-list-table widefat fixed striped">
+                                    <thead>
+                                        <tr>
+                                            <th><?php _e('Дата', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Реферер', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Покупатель', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Сумма', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Тип', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Статус', 'cryptoschool'); ?></th>
+                                            <th><?php _e('Пакет', 'cryptoschool'); ?></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($recent_transactions as $transaction) : ?>
+                                            <tr>
+                                                <td><?php echo esc_html($transaction->created_at); ?></td>
+                                                <td><?php echo esc_html($transaction->referrer_login ?: 'ID: ' . $transaction->referrer_id); ?></td>
+                                                <td><?php echo esc_html($transaction->buyer_login ?: ($transaction->user_id ? 'ID: ' . $transaction->user_id : '-')); ?></td>
+                                                <td><strong>$<?php echo number_format($transaction->amount, 2); ?></strong></td>
+                                                <td>
+                                                    <?php 
+                                                    $type_labels = array(
+                                                        'commission_level_1' => '1-й уровень',
+                                                        'commission_level_2' => '2-й уровень',
+                                                        'manual_commission' => 'Ручное'
+                                                    );
+                                                    echo esc_html($type_labels[$transaction->type] ?? $transaction->type);
+                                                    ?>
+                                                </td>
+                                                <td>
+                                                    <span class="<?php echo $transaction->status == 'completed' ? 'text-success' : ''; ?>">
+                                                        <?php echo esc_html($transaction->status); ?>
+                                                    </span>
+                                                </td>
+                                                <td><?php echo esc_html($transaction->package_name ?: '-'); ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

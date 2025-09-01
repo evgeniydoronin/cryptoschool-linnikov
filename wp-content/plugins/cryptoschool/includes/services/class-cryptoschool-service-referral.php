@@ -38,8 +38,8 @@ class CryptoSchool_Service_Referral extends CryptoSchool_Service {
      * @return void
      */
     protected function register_hooks() {
-        // Хук для обработки реферальных ссылок
-        $this->add_action('init', 'handle_referral_link');
+        // ОТКЛЮЧЕНО: Хук для обработки реферальных ссылок (перенесен в cryptoschool.php)
+        // $this->add_action('init', 'handle_referral_link');
         
         // Хук для сохранения реферального кода в сессии
         $this->add_action('wp_loaded', 'save_referral_code_to_session');

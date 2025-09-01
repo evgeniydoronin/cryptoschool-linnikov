@@ -76,16 +76,65 @@ class CryptoSchool_Admin_Referrals_Controller extends CryptoSchool_Admin_Control
      * Отображение страницы реферальной системы
      */
     public function display_referrals_page() {
-        // Получение демо-данных для отображения
+        global $wpdb;
+        
+        // Получение реальных данных для отображения
         $influencers = $this->get_demo_influencers();
         $withdrawal_requests = $this->get_demo_withdrawal_requests();
         $stats = $this->get_demo_stats();
+        
+        // Дополнительно получаем все реферальные ссылки
+        $referral_links = $wpdb->get_results("
+            SELECT 
+                rl.*,
+                u.user_login,
+                u.user_email,
+                COUNT(DISTINCT ru.user_id) as referrals_count
+            FROM {$wpdb->prefix}cryptoschool_referral_links rl
+            LEFT JOIN {$wpdb->prefix}users u ON rl.user_id = u.ID
+            LEFT JOIN {$wpdb->prefix}cryptoschool_referral_users ru ON rl.id = ru.referral_link_id
+            GROUP BY rl.id
+            ORDER BY rl.created_at DESC
+            LIMIT 100
+        ");
+        
+        // Получаем последние реферальные связи
+        $recent_referrals = $wpdb->get_results("
+            SELECT 
+                ru.*,
+                u_referrer.user_login as referrer_login,
+                u_referred.user_login as referred_login,
+                rl.link_name,
+                rl.referral_code
+            FROM {$wpdb->prefix}cryptoschool_referral_users ru
+            LEFT JOIN {$wpdb->prefix}users u_referrer ON ru.referrer_id = u_referrer.ID
+            LEFT JOIN {$wpdb->prefix}users u_referred ON ru.user_id = u_referred.ID
+            LEFT JOIN {$wpdb->prefix}cryptoschool_referral_links rl ON ru.referral_link_id = rl.id
+            ORDER BY ru.registration_date DESC
+            LIMIT 50
+        ");
+        
+        // Получаем последние транзакции
+        $recent_transactions = $wpdb->get_results("
+            SELECT 
+                rt.*,
+                u_referrer.user_login as referrer_login,
+                u_buyer.user_login as buyer_login
+            FROM {$wpdb->prefix}cryptoschool_referral_transactions rt
+            LEFT JOIN {$wpdb->prefix}users u_referrer ON rt.referrer_id = u_referrer.ID
+            LEFT JOIN {$wpdb->prefix}users u_buyer ON rt.user_id = u_buyer.ID
+            ORDER BY rt.created_at DESC
+            LIMIT 20
+        ");
 
-        // Отображение страницы
+        // Отображение страницы с реальными данными
         $this->render_view('referrals', array(
             'influencers' => $influencers,
             'withdrawal_requests' => $withdrawal_requests,
-            'stats' => $stats
+            'stats' => $stats,
+            'referral_links' => $referral_links ?: array(),
+            'recent_referrals' => $recent_referrals ?: array(),
+            'recent_transactions' => $recent_transactions ?: array()
         ));
     }
 
@@ -386,33 +435,49 @@ class CryptoSchool_Admin_Referrals_Controller extends CryptoSchool_Admin_Control
     }
 
     /**
-     * Получение демо-данных инфлюенсеров
+     * Получение реальных данных инфлюенсеров из БД
      *
      * @return array
      */
     private function get_demo_influencers() {
-        return array(
-            (object) array(
-                'id' => 1,
-                'user_login' => 'influencer1',
-                'user_email' => 'influencer1@example.com',
-                'display_name' => 'Инфлюенсер 1',
-                'max_commission_percent' => 35,
-                'is_influencer' => true,
-                'admin_notes' => 'YouTube блогер с 50K подписчиков',
-                'created_at' => '2025-06-01 10:00:00'
-            ),
-            (object) array(
-                'id' => 2,
-                'user_login' => 'influencer2',
-                'user_email' => 'influencer2@example.com',
-                'display_name' => 'Инфлюенсер 2',
-                'max_commission_percent' => 50,
-                'is_influencer' => true,
-                'admin_notes' => 'Telegram канал с 100K подписчиков',
-                'created_at' => '2025-06-05 14:30:00'
-            )
-        );
+        global $wpdb;
+        
+        // Получаем пользователей с максимальными комиссиями > 20%
+        $influencers = $wpdb->get_results("
+            SELECT DISTINCT
+                rl.user_id as id,
+                u.user_login,
+                u.user_email,
+                u.display_name,
+                MAX(rl.commission_percent) as max_commission_percent,
+                1 as is_influencer,
+                COUNT(DISTINCT ru.user_id) as referrals_count,
+                SUM(rl.total_earned) as total_earned,
+                MIN(rl.created_at) as created_at
+            FROM {$wpdb->prefix}cryptoschool_referral_links rl
+            LEFT JOIN {$wpdb->prefix}users u ON rl.user_id = u.ID
+            LEFT JOIN {$wpdb->prefix}cryptoschool_referral_users ru ON rl.id = ru.referral_link_id
+            WHERE rl.commission_percent > 20
+            GROUP BY rl.user_id, u.user_login, u.user_email, u.display_name
+            ORDER BY max_commission_percent DESC, total_earned DESC
+            LIMIT 20
+        ");
+        
+        // Если нет реальных инфлюенсеров, возвращаем пустой массив
+        if (empty($influencers)) {
+            return array();
+        }
+        
+        // Форматируем данные
+        foreach ($influencers as &$influencer) {
+            $influencer->admin_notes = sprintf(
+                'Рефералов: %d, Заработано: $%.2f',
+                $influencer->referrals_count,
+                $influencer->total_earned ?: 0
+            );
+        }
+        
+        return $influencers;
     }
 
     /**
@@ -462,69 +527,79 @@ class CryptoSchool_Admin_Referrals_Controller extends CryptoSchool_Admin_Control
     }
 
     /**
-     * Получение демо-статистики
+     * Получение реальной статистики из БД
      *
      * @return array
      */
     private function get_demo_stats() {
+        global $wpdb;
+        
+        // Общая статистика за все время
+        $total_stats = array(
+            'referral_links' => $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}cryptoschool_referral_links"),
+            'referrals' => $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}cryptoschool_referral_users"),
+            'purchases' => $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}cryptoschool_referral_users WHERE status = 'purchased'"),
+            'commissions_amount' => $wpdb->get_var("SELECT SUM(amount) FROM {$wpdb->prefix}cryptoschool_referral_transactions WHERE status = 'completed'") ?: 0,
+            'paid_amount' => $wpdb->get_var("SELECT SUM(amount) FROM {$wpdb->prefix}cryptoschool_referral_transactions WHERE status = 'paid'") ?: 0
+        );
+        
+        // Статистика за последний месяц (30 дней)
+        $thirty_days_ago = date('Y-m-d H:i:s', strtotime('-30 days'));
+        $monthly_stats = array(
+            'referral_links' => $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}cryptoschool_referral_links WHERE created_at > %s",
+                $thirty_days_ago
+            )),
+            'referrals' => $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}cryptoschool_referral_users WHERE registration_date > %s",
+                $thirty_days_ago
+            )),
+            'purchases' => $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}cryptoschool_referral_users WHERE status = 'purchased' AND purchase_date > %s",
+                $thirty_days_ago
+            )),
+            'commissions_amount' => $wpdb->get_var($wpdb->prepare(
+                "SELECT SUM(amount) FROM {$wpdb->prefix}cryptoschool_referral_transactions WHERE status = 'completed' AND created_at > %s",
+                $thirty_days_ago
+            )) ?: 0,
+            'withdrawal_requests' => 0 // Пока нет таблицы для запросов на вывод
+        );
+        
+        // Топ рефереров
+        $top_referrers = $wpdb->get_results("
+            SELECT 
+                u.user_login,
+                u.user_email,
+                COUNT(DISTINCT ru.user_id) as referrals_count,
+                COALESCE(SUM(rl.total_earned), 0) as total_earned
+            FROM {$wpdb->prefix}cryptoschool_referral_links rl
+            LEFT JOIN {$wpdb->prefix}users u ON rl.user_id = u.ID
+            LEFT JOIN {$wpdb->prefix}cryptoschool_referral_users ru ON rl.id = ru.referral_link_id
+            WHERE rl.is_active = 1
+            GROUP BY u.ID, u.user_login, u.user_email
+            ORDER BY total_earned DESC
+            LIMIT 3
+        ", ARRAY_A);
+        
+        // Топ реферальных ссылок
+        $top_links = $wpdb->get_results("
+            SELECT 
+                link_name,
+                clicks_count as clicks,
+                conversions_count as conversions,
+                conversion_rate,
+                COALESCE(total_earned, 0) as total_earned
+            FROM {$wpdb->prefix}cryptoschool_referral_links
+            WHERE is_active = 1
+            ORDER BY total_earned DESC, conversions_count DESC
+            LIMIT 3
+        ", ARRAY_A);
+        
         return array(
-            'total' => array(
-                'referral_links' => 45,
-                'referrals' => 128,
-                'purchases' => 89,
-                'commissions_amount' => 2450.75,
-                'paid_amount' => 1890.25
-            ),
-            'monthly' => array(
-                'referral_links' => 12,
-                'referrals' => 34,
-                'purchases' => 28,
-                'commissions_amount' => 680.50,
-                'withdrawal_requests' => 8
-            ),
-            'top_referrers' => array(
-                array(
-                    'user_login' => 'top_referrer1',
-                    'user_email' => 'top1@example.com',
-                    'total_earned' => 450.75,
-                    'referrals_count' => 25
-                ),
-                array(
-                    'user_login' => 'top_referrer2',
-                    'user_email' => 'top2@example.com',
-                    'total_earned' => 380.50,
-                    'referrals_count' => 18
-                ),
-                array(
-                    'user_login' => 'top_referrer3',
-                    'user_email' => 'top3@example.com',
-                    'total_earned' => 295.25,
-                    'referrals_count' => 15
-                )
-            ),
-            'top_links' => array(
-                array(
-                    'link_name' => 'YouTube промо',
-                    'clicks' => 1250,
-                    'conversions' => 45,
-                    'conversion_rate' => 3.6,
-                    'total_earned' => 890.50
-                ),
-                array(
-                    'link_name' => 'Telegram канал',
-                    'clicks' => 980,
-                    'conversions' => 32,
-                    'conversion_rate' => 3.3,
-                    'total_earned' => 650.75
-                ),
-                array(
-                    'link_name' => 'Instagram Stories',
-                    'clicks' => 750,
-                    'conversions' => 18,
-                    'conversion_rate' => 2.4,
-                    'total_earned' => 385.25
-                )
-            )
+            'total' => $total_stats,
+            'monthly' => $monthly_stats,
+            'top_referrers' => $top_referrers ?: array(),
+            'top_links' => $top_links ?: array()
         );
     }
 }
