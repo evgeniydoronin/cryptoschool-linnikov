@@ -47,7 +47,7 @@
 
         /**
          * Загрузка данных реферальной программы
-         */
+         */ 
         loadReferralData: function() {
             const self = this;
             

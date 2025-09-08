@@ -16,6 +16,18 @@ require_once get_template_directory() . '/inc/auth-customization.php';
 // Подключение WPML хелперов
 require_once get_template_directory() . '/inc/wpml-helpers.php';
 
+// Подключение функций блога
+require_once get_template_directory() . '/inc/blog-features.php';
+
+// Подключение системы комментариев
+require_once get_template_directory() . '/inc/comments-system.php';
+
+// Подключение универсальных хлебных крошек
+require_once get_template_directory() . '/inc/universal-breadcrumbs.php';
+
+// Подключение поиска по глоссарию
+require_once get_template_directory() . '/inc/glossary-search.php';
+
 /**
  * Обновление правил перезаписи URL при активации темы
  */
@@ -28,117 +40,20 @@ add_action('after_switch_theme', 'cryptoschool_rewrite_flush');
 // Обновляем правила перезаписи URL при первой загрузке страницы
 flush_rewrite_rules();
 
-/**
- * Создание страниц авторизации и личного кабинета
- */
-function cryptoschool_create_pages() {
-    // Массив страниц для создания
-    $pages = array(
-        // Страницы авторизации
-        'sign-in' => array(
-            'title' => 'Вход',
-            'template' => 'page-sign-in.php'
-        ),
-        'sign-up' => array(
-            'title' => 'Регистрация',
-            'template' => 'page-sign-up.php'
-        ),
-        'forgot-password' => array(
-            'title' => 'Восстановление пароля',
-            'template' => 'page-forgot-password.php'
-        ),
-        'set-password' => array(
-            'title' => 'Установка нового пароля',
-            'template' => 'page-set-password.php'
-        ),
-        
-        // Страницы личного кабинета
-        'dashboard' => array(
-            'title' => 'Dashboard',
-            'template' => 'page-dashboard.php'
-        ),
-        'courses' => array(
-            'title' => 'Навчання',
-            'template' => 'page-courses.php'
-        ),
-        'course' => array(
-            'title' => 'Курс',
-            'template' => 'page-course.php'
-        ),
-        'rate' => array(
-            'title' => 'Мій тариф',
-            'template' => 'page-rate.php'
-        ),
-        'referral' => array(
-            'title' => 'Реферальна програма',
-            'template' => 'page-referral.php'
-        ),
-        'settings' => array(
-            'title' => 'Налаштування',
-            'template' => 'page-settings.php'
-        ),
-        'lesson' => array(
-            'title' => 'Урок',
-            'template' => 'page-lesson.php'
-        )
-    );
-    
-    // Создаем страницы
-    foreach ($pages as $slug => $page) {
-        // Проверяем, существует ли страница с таким slug
-        $page_exists = get_page_by_path($slug);
-        
-        // Если страница не существует, создаем ее
-        if (!$page_exists) {
-            // Создаем страницу
-            $page_id = wp_insert_post(array(
-                'post_title' => $page['title'],
-                'post_name' => $slug,
-                'post_status' => 'publish',
-                'post_type' => 'page',
-                'comment_status' => 'closed',
-                'ping_status' => 'closed'
-            ));
-            
-            // Устанавливаем шаблон страницы
-            if ($page_id) {
-                update_post_meta($page_id, '_wp_page_template', $page['template']);
-            }
-        }
-    }
-}
-
-// Создаем страницы при активации темы
-add_action('after_switch_theme', 'cryptoschool_create_pages');
-
-// Создаем страницы при первой загрузке страницы
-cryptoschool_create_pages();
-
-// Роль "Студент" уже существует в системе, поэтому нам не нужно ее создавать
 
 /**
  * Перенаправление после регистрации
- */
-function cryptoschool_registration_redirect() {
-    // Перенаправляем на главную страницу с параметром registration=success
-    wp_redirect(home_url('/?registration=success'));
-    exit;
-}
-add_action('registration_redirect', 'cryptoschool_registration_redirect');
-
-/**
- * Перенаправление после регистрации (альтернативный метод)
  * 
  * @param string $redirect_to URL для перенаправления
  * @param string $user_login Логин пользователя
  * @param WP_User $user Объект пользователя
  * @return string
  */
-function cryptoschool_register_redirect($redirect_to, $user_login, $user) {
+function cryptoschool_registration_redirect($redirect_to, $user_login, $user) {
     // Перенаправляем на главную страницу с параметром registration=success
     return home_url('/?registration=success');
 }
-add_filter('registration_redirect', 'cryptoschool_register_redirect', 10, 3);
+add_filter('registration_redirect', 'cryptoschool_registration_redirect', 10, 3);
 
 /**
  * Перехват формы регистрации
@@ -219,6 +134,16 @@ function cryptoschool_registration_success_message() {
 add_action('wp_footer', 'cryptoschool_registration_success_message');
 
 /**
+ * Настройка темы
+ */
+function cryptoschool_theme_setup() {
+    // Добавляем поддержку миниатюр постов (featured images)
+    add_theme_support('post-thumbnails');
+}
+add_action('after_setup_theme', 'cryptoschool_theme_setup');
+
+
+/**
  * Скрытие админ-панели WordPress для студентов
  */
 function cryptoschool_hide_admin_bar() {
@@ -233,10 +158,41 @@ add_action('after_setup_theme', 'cryptoschool_hide_admin_bar');
  * Перенаправление студентов с админки на главную страницу
  */
 function cryptoschool_redirect_non_admin_users() {
-    // Если пользователь авторизован, но не администратор, и пытается зайти в админку
-    if (is_admin() && !current_user_can('administrator') && !(defined('DOING_AJAX') && DOING_AJAX)) {
-        wp_redirect(home_url());
-        exit;
+    // Добавляем детальное логирование
+    if (is_admin() && !(defined('DOING_AJAX') && DOING_AJAX)) {
+        $current_user = wp_get_current_user();
+        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+        
+        // Логируем все детали
+        error_log('=== CryptoSchool Redirect Debug ===');
+        error_log('Request URI: ' . $request_uri);
+        error_log('User ID: ' . $current_user->ID);
+        error_log('User login: ' . $current_user->user_login);
+        error_log('User roles: ' . implode(', ', $current_user->roles));
+        error_log('Is admin page: ' . (is_admin() ? 'yes' : 'no'));
+        error_log('Current page: ' . (isset($_GET['page']) ? $_GET['page'] : 'not set'));
+        error_log('Pagenow: ' . ($GLOBALS['pagenow'] ?? 'not set'));
+        
+        // Проверяем различные capabilities
+        error_log('Capabilities check:');
+        error_log('- administrator: ' . (current_user_can('administrator') ? 'yes' : 'no'));
+        error_log('- manage_options: ' . (current_user_can('manage_options') ? 'yes' : 'no'));
+        error_log('- activate_plugins: ' . (current_user_can('activate_plugins') ? 'yes' : 'no'));
+        error_log('- install_plugins: ' . (current_user_can('install_plugins') ? 'yes' : 'no'));
+        
+        // Проверяем, на какой именно странице мы находимся
+        if (strpos($request_uri, 'plugins.php') !== false) {
+            error_log('!!! On plugins.php page !!!');
+        }
+        
+        error_log('=== End Debug ===');
+        
+        // Оригинальная проверка
+        if (!current_user_can('administrator')) {
+            error_log('REDIRECTING: User does not have administrator capability');
+            wp_redirect(home_url());
+            exit;
+        }
     }
 }
 add_action('init', 'cryptoschool_redirect_non_admin_users');
@@ -279,7 +235,7 @@ function cryptoschool_enqueue_frontend_assets() {
     wp_enqueue_script(
         'cryptoschool-main-script',
         $frontend_base . '/main.js',
-        array('jquery', 'vanilla-drawers'),
+        array(), // Убираем зависимости для ES6 модулей
         filemtime(get_template_directory() . '/frontend-source/dist/assets/main.js'),
         true
     );
@@ -299,3 +255,65 @@ function cryptoschool_add_module_type($tag, $handle, $src) {
     
     return $tag;
 }
+
+/**
+ * Добавляем скрипт инициализации drawers через wp_footer
+ * Это обходное решение, так как wp_add_inline_script не работает с модульными скриптами
+ */
+function cryptoschool_init_drawers_script() {
+    ?>
+    <script>
+    // Ждем загрузки ES6 модулей и инициализируем drawers
+    (function() {
+        let attempts = 0;
+        const maxAttempts = 50; // Максимум 5 секунд ожидания
+        
+        function initDrawers() {
+            attempts++;
+            
+            // Проверяем, загружена ли библиотека drawers
+            if (window.app && window.app.drawers) {
+                // Проверяем, не была ли уже вызвана инициализация
+                if (!window.drawersInitialized) {
+                    try {
+                        window.app.drawers.init();
+                        
+                        // Настраиваем опции только для существующих drawers
+                        const cabinetMenuDrawer = window.app.drawers.get("cabinet-menu");
+                        if (cabinetMenuDrawer) {
+                            cabinetMenuDrawer.setOptions({ lockPageScroll: false });
+                        }
+                        
+                        const mainMenuDrawer = window.app.drawers.get("main-menu");
+                        if (mainMenuDrawer) {
+                            mainMenuDrawer.setOptions({ lockPageScroll: false });
+                        }
+                        
+                        window.drawersInitialized = true;
+                        console.log('Drawers initialized successfully');
+                    } catch (e) {
+                        console.error('Error initializing drawers:', e);
+                    }
+                }
+            } else if (attempts < maxAttempts) {
+                // Если библиотека еще не загружена, пробуем снова через 100мс
+                setTimeout(initDrawers, 100);
+            } else {
+                console.warn('Drawers library not found after ' + maxAttempts + ' attempts');
+            }
+        }
+        
+        // Запускаем проверку после небольшой задержки
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(initDrawers, 100);
+            });
+        } else {
+            // DOM уже загружен
+            setTimeout(initDrawers, 100);
+        }
+    })();
+    </script>
+    <?php
+}
+add_action('wp_footer', 'cryptoschool_init_drawers_script', 100);
