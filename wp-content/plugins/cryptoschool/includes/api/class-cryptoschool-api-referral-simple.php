@@ -244,6 +244,7 @@ class CryptoSchool_API_Referral_Simple {
         global $wpdb;
         
         // Получаем реферальные ссылки пользователя
+        $table_name = $wpdb->prefix . 'cryptoschool_referral_links';
         $links = $wpdb->get_results($wpdb->prepare("
             SELECT 
                 id,
@@ -255,7 +256,7 @@ class CryptoSchool_API_Referral_Simple {
                 conversions_count,
                 total_earned,
                 created_at
-            FROM {$wpdb->prefix}cryptoschool_referral_links 
+            FROM `{$table_name}` 
             WHERE user_id = %d 
             ORDER BY created_at DESC
         ", $user_id), ARRAY_A);
@@ -300,12 +301,13 @@ class CryptoSchool_API_Referral_Simple {
         global $wpdb;
         
         // Получаем статистику по ссылке из базы данных
+        $table_name = $wpdb->prefix . 'cryptoschool_referral_links';
         $stats = $wpdb->get_row($wpdb->prepare("
             SELECT 
                 clicks_count,
                 conversions_count,
                 total_earned
-            FROM {$wpdb->prefix}cryptoschool_referral_links 
+            FROM `{$table_name}` 
             WHERE id = %d AND user_id = %d
         ", $link_id, $user_id), ARRAY_A);
         
@@ -337,14 +339,16 @@ class CryptoSchool_API_Referral_Simple {
         global $wpdb;
         
         // Получаем последние транзакции по этой ссылке
+        $transactions_table = $wpdb->prefix . 'cryptoschool_referral_transactions';
+        $payments_table = $wpdb->prefix . 'cryptoschool_payments';
         $payments = $wpdb->get_results($wpdb->prepare("
             SELECT 
                 rt.amount,
                 rt.status,
                 rt.created_at,
                 rt.comment
-            FROM {$wpdb->prefix}cryptoschool_referral_transactions rt
-            INNER JOIN {$wpdb->prefix}cryptoschool_payments p ON rt.payment_id = p.id
+            FROM `{$transactions_table}` rt
+            INNER JOIN `{$payments_table}` p ON rt.payment_id = p.id
             WHERE p.referral_link_id = %d AND rt.referrer_id = %d
             ORDER BY rt.created_at DESC
             LIMIT 5
@@ -385,12 +389,13 @@ class CryptoSchool_API_Referral_Simple {
         global $wpdb;
         
         // Получаем рефералов по этой ссылке
+        $referral_users_table = $wpdb->prefix . 'cryptoschool_referral_users';
         $referrals = $wpdb->get_results($wpdb->prepare("
             SELECT 
                 ru.registration_date,
                 ru.status,
                 ru.user_id as referral_user_id
-            FROM {$wpdb->prefix}cryptoschool_referral_users ru
+            FROM `{$referral_users_table}` ru
             WHERE ru.referral_link_id = %d AND ru.referrer_id = %d
             ORDER BY ru.registration_date DESC
             LIMIT 10
@@ -432,6 +437,9 @@ class CryptoSchool_API_Referral_Simple {
         global $wpdb;
         
         // Получаем общую статистику пользователя
+        $referral_users_table = $wpdb->prefix . 'cryptoschool_referral_users';
+        $transactions_table = $wpdb->prefix . 'cryptoschool_referral_transactions';
+        $withdrawal_table = $wpdb->prefix . 'cryptoschool_withdrawal_requests';
         $stats = $wpdb->get_row($wpdb->prepare("
             SELECT 
                 COUNT(DISTINCT ru.user_id) as total_invited,
@@ -439,11 +447,11 @@ class CryptoSchool_API_Referral_Simple {
                 COALESCE(SUM(rt.amount), 0) as total_earned,
                 COALESCE((
                     SELECT SUM(amount) 
-                    FROM {$wpdb->prefix}cryptoschool_withdrawal_requests 
+                    FROM `{$withdrawal_table}` 
                     WHERE user_id = %d AND status = 'paid'
                 ), 0) as total_paid_out
-            FROM {$wpdb->prefix}cryptoschool_referral_users ru
-            LEFT JOIN {$wpdb->prefix}cryptoschool_referral_transactions rt ON ru.user_id = rt.user_id AND ru.referrer_id = rt.referrer_id
+            FROM `{$referral_users_table}` ru
+            LEFT JOIN `{$transactions_table}` rt ON ru.user_id = rt.user_id AND ru.referrer_id = rt.referrer_id
             WHERE ru.referrer_id = %d
         ", $user_id, $user_id), ARRAY_A);
         

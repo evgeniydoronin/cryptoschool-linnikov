@@ -28,8 +28,9 @@ get_header();
         <?php
         // Вывод сообщений об ошибках и успехе
         if (isset($_GET['errors'])) {
-            $errors = explode(',', $_GET['errors']);
+            $errors = explode(',', sanitize_text_field($_GET['errors']));
             foreach ($errors as $error) {
+                $error = sanitize_key($error);
                 switch ($error) {
                     case 'empty_username':
                         echo '<div class="auth-message auth-message_error">Введите имя пользователя или email.</div>';
@@ -45,7 +46,7 @@ get_header();
                         break;
                 }
             }
-        } elseif (isset($_GET['checkemail']) && $_GET['checkemail'] == 'confirm') {
+        } elseif (isset($_GET['checkemail']) && $_GET['checkemail'] === 'confirm') {
             echo '<div class="auth-message auth-message_success">Инструкции по восстановлению пароля отправлены на вашу электронную почту.</div>';
         }
         ?>
@@ -62,6 +63,7 @@ get_header();
         </div>
         
         <form id="lostpasswordform" method="post" action="<?php echo esc_url(wp_lostpassword_url()); ?>">
+            <?php wp_nonce_field('cryptoschool_lostpassword_action', 'cryptoschool_lostpassword_nonce'); ?>
             <div class="auth__fields auth__fields_margin-big">
                 <div class="auth-field">
                     <div class="auth-field__control">

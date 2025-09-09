@@ -1,0 +1,18 @@
+{
+    "timestamp": "2025-09-08 10:48:35",
+    "level": "warning",
+    "category": "threats",
+    "event_type": "suspicious_user_agent",
+    "message": "Suspicious User-Agent detected",
+    "ip": "192.168.65.1",
+    "user_agent": "sqlmap\/1.0",
+    "request_uri": "\/",
+    "request_method": "GET",
+    "referer": "",
+    "user_id": 0,
+    "session_id": "",
+    "context": {
+        "pattern_matched": "\/sqlmap\/i",
+        "full_user_agent": "sqlmap\/1.0"
+    }
+}

@@ -27,9 +27,9 @@ get_header();
       <div class="auth__form">
         <?php
         // Вывод сообщений об ошибках
-        if (isset($_GET['login']) && $_GET['login'] == 'failed') {
+        if (isset($_GET['login']) && $_GET['login'] === 'failed') {
             echo '<div class="auth-message auth-message_error">Неверное имя пользователя или пароль.</div>';
-        } elseif (isset($_GET['password']) && $_GET['password'] == 'reset') {
+        } elseif (isset($_GET['password']) && $_GET['password'] === 'reset') {
             echo '<div class="auth-message auth-message_success">Пароль успешно изменен. Теперь вы можете войти с новым паролем.</div>';
         }
         ?>
@@ -42,6 +42,7 @@ get_header();
         </div>
         
         <form id="login-form" method="post" action="<?php echo esc_url(site_url('wp-login.php', 'login_post')); ?>">
+            <?php wp_nonce_field('cryptoschool_login_action', 'cryptoschool_login_nonce'); ?>
             <div class="auth__fields">
                 <div class="auth-field">
                     <div class="auth-field__control">

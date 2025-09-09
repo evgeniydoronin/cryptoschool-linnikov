@@ -95,11 +95,30 @@ class CommentsSystem {
         }
 
         const textarea = document.getElementById('new-comment-text');
-        const content = textarea.value.trim();
+        let content = textarea.value.trim();
         
         if (!content) {
             alert('Введите текст комментария');
             textarea.focus();
+            return;
+        }
+        
+        // Клиентская валидация длины
+        if (content.length < 2) {
+            alert('Комментарий слишком короткий');
+            textarea.focus();
+            return;
+        }
+        
+        if (content.length > 5000) {
+            alert('Комментарий слишком длинный (максимум 5000 символов)');
+            textarea.focus();
+            return;
+        }
+        
+        // Проверка на подозрительный контент
+        if (this.isSuspiciousContent(content)) {
+            alert('Обнаружен подозрительный контент');
             return;
         }
 
@@ -428,11 +447,30 @@ class CommentsSystem {
         const parentId = submitBtn.dataset.parentId;
         const replyForm = submitBtn.closest('.reply-form');
         const textarea = replyForm.querySelector('.reply-textarea');
-        const content = textarea.value.trim();
+        let content = textarea.value.trim();
         
         if (!content) {
             alert('Введите текст ответа');
             textarea.focus();
+            return;
+        }
+        
+        // Клиентская валидация 
+        if (content.length < 2) {
+            alert('Ответ слишком короткий');
+            textarea.focus();
+            return;
+        }
+        
+        if (content.length > 5000) {
+            alert('Ответ слишком длинный (максимум 5000 символов)');
+            textarea.focus();
+            return;
+        }
+        
+        // Проверка на подозрительный контент
+        if (this.isSuspiciousContent(content)) {
+            alert('Обнаружен подозрительный контент');
             return;
         }
 
@@ -599,6 +637,28 @@ class CommentsSystem {
                 notification.parentNode.removeChild(notification);
             }
         }, 3000);
+    }
+    
+    /**
+     * Проверка на подозрительные ссылки и скрипты
+     * @param {string} text 
+     * @returns {boolean}
+     */
+    isSuspiciousContent(text) {
+        // Проверяем на подозрительные паттерны
+        const suspiciousPatterns = [
+            /<script[^>]*>.*?<\/script>/gi,
+            /javascript:/gi,
+            /on\w+\s*=/gi, // onclick, onerror, etc.
+            /<iframe/gi,
+            /<object/gi,
+            /<embed/gi,
+            /data:text\/html/gi,
+            /vbscript:/gi,
+            /<img[^>]+src[\s]*=[\s]*["']javascript:/gi
+        ];
+        
+        return suspiciousPatterns.some(pattern => pattern.test(text));
     }
 }
 

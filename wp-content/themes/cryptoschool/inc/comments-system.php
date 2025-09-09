@@ -102,22 +102,81 @@ function cryptoschool_get_comments_api($request) {
  * Добавить комментарий (API endpoint)
  */
 function cryptoschool_add_comment_api($request) {
-    $post_id = $request['post_id'];
+    $post_id = absint($request['post_id']);
     $content = $request['content'];
-    $parent = $request['parent'];
+    $parent = absint($request['parent']);
     
     // Проверяем nonce
     if (!wp_verify_nonce($request->get_header('X-WP-Nonce'), 'wp_rest')) {
         return new WP_Error('invalid_nonce', 'Invalid nonce', array('status' => 403));
     }
+    
+    // Проверка Rate Limiting для комментариев
+    if (class_exists('CryptoSchool_Rate_Limiting')) {
+        $user_id = get_current_user_id();
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $rate_limit_key = 'comment_submit_' . md5($user_id . '_' . $ip);
+        
+        // Проверяем: не более 5 комментариев в минуту от одного пользователя
+        $current_count = get_transient($rate_limit_key);
+        if ($current_count >= 5) {
+            return new WP_Error('rate_limit_exceeded', 'Слишком много комментариев. Подождите минуту.', array('status' => 429));
+        }
+        set_transient($rate_limit_key, ($current_count ? $current_count + 1 : 1), 60);
+    }
+    
+    // Валидация длины комментария
+    if (strlen($content) < 2) {
+        return new WP_Error('comment_too_short', 'Комментарий слишком короткий', array('status' => 400));
+    }
+    if (strlen($content) > 5000) {
+        return new WP_Error('comment_too_long', 'Комментарий слишком длинный (максимум 5000 символов)', array('status' => 400));
+    }
+    
+    // Очистка контента от опасных HTML тегов и скриптов
+    $allowed_tags = array(
+        'a' => array('href' => true, 'title' => true),
+        'b' => array(),
+        'strong' => array(),
+        'i' => array(),
+        'em' => array(),
+        'u' => array(),
+        'br' => array(),
+        'p' => array(),
+        'blockquote' => array(),
+        'code' => array(),
+        'pre' => array()
+    );
+    
+    $content = wp_kses($content, $allowed_tags);
+    $content = wp_slash($content); // Экранирование для безопасной вставки в БД
 
+    // Проверяем на дублирование комментариев
+    global $wpdb;
+    $duplicate_check = $wpdb->get_var($wpdb->prepare(
+        "SELECT comment_ID FROM {$wpdb->comments} 
+        WHERE comment_post_ID = %d 
+        AND comment_content = %s 
+        AND user_id = %d 
+        AND comment_date > DATE_SUB(NOW(), INTERVAL 1 MINUTE)",
+        $post_id,
+        $content,
+        get_current_user_id()
+    ));
+    
+    if ($duplicate_check) {
+        return new WP_Error('duplicate_comment', 'Такой комментарий уже был отправлен', array('status' => 409));
+    }
+    
     // Добавляем комментарий
     $comment_data = array(
         'comment_post_ID' => $post_id,
         'comment_content' => $content,
         'comment_parent' => $parent,
         'user_id' => get_current_user_id(),
-        'comment_approved' => 1 // Автоматическое одобрение для авторизованных пользователей
+        'comment_approved' => 1, // Автоматическое одобрение для авторизованных пользователей
+        'comment_agent' => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255),
+        'comment_author_IP' => $_SERVER['REMOTE_ADDR'] ?? ''
     );
 
     $comment_id = wp_insert_comment($comment_data);
@@ -125,6 +184,21 @@ function cryptoschool_add_comment_api($request) {
     if ($comment_id) {
         $comment = get_comment($comment_id);
         $formatted_comment = cryptoschool_format_comment($comment);
+        
+        // Логирование успешного добавления комментария
+        if (class_exists('CryptoSchool_Security_Logger')) {
+            CryptoSchool_Security_Logger::log(
+                'comments',
+                'comment_added',
+                "Comment added to post {$post_id}",
+                CryptoSchool_Security_Logger::LEVEL_INFO,
+                array(
+                    'comment_id' => $comment_id,
+                    'post_id' => $post_id,
+                    'user_id' => get_current_user_id()
+                )
+            );
+        }
         
         return rest_ensure_response(array(
             'success' => true,
@@ -139,7 +213,7 @@ function cryptoschool_add_comment_api($request) {
  * Лайкнуть комментарий (API endpoint)
  */
 function cryptoschool_like_comment_api($request) {
-    $comment_id = $request['comment_id'];
+    $comment_id = absint($request['comment_id']);
     $user_id = get_current_user_id();
     
     // Проверяем, что комментарий существует
@@ -178,6 +252,12 @@ function cryptoschool_like_comment_api($request) {
  * Получить комментарии с ответами
  */
 function cryptoschool_get_comments_with_replies($post_id, $page = 1, $per_page = 3, $sort = 'newest') {
+    // Валидация параметров
+    $post_id = absint($post_id);
+    $page = absint($page);
+    $per_page = min(absint($per_page), 50); // Максимум 50 комментариев за раз
+    $sort = in_array($sort, array('newest', 'oldest')) ? $sort : 'newest';
+    
     // Определяем порядок сортировки
     $order = ($sort === 'oldest') ? 'ASC' : 'DESC';
     
@@ -243,14 +323,32 @@ function cryptoschool_format_comment($comment) {
     // Форматируем время
     $time_diff = human_time_diff(strtotime($comment->comment_date), current_time('timestamp'));
     
+    // Экранируем текст комментария для безопасного вывода
+    $safe_content = wp_kses($comment->comment_content, array(
+        'a' => array('href' => true, 'title' => true),
+        'b' => array(),
+        'strong' => array(),
+        'i' => array(),
+        'em' => array(),
+        'u' => array(),
+        'br' => array(),
+        'p' => array(),
+        'blockquote' => array(),
+        'code' => array(),
+        'pre' => array()
+    ));
+    
+    // Конвертируем переносы строк в <br>
+    $safe_content = nl2br($safe_content);
+    
     return array(
-        'id' => $comment->comment_ID,
-        'author' => $user ? $user->display_name : $comment->comment_author,
-        'avatar' => $avatar_url,
-        'text' => $comment->comment_content,
-        'date' => $time_diff,
-        'likes' => $likes_count,
-        'userLiked' => $user_liked,
+        'id' => intval($comment->comment_ID),
+        'author' => esc_html($user ? $user->display_name : $comment->comment_author),
+        'avatar' => esc_url($avatar_url),
+        'text' => $safe_content,
+        'date' => esc_html($time_diff),
+        'likes' => intval($likes_count),
+        'userLiked' => (bool)$user_liked,
         'canReply' => is_user_logged_in(),
         'canLike' => is_user_logged_in() && get_current_user_id() != $comment->user_id
     );

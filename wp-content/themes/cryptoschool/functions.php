@@ -28,6 +28,54 @@ require_once get_template_directory() . '/inc/universal-breadcrumbs.php';
 // Подключение поиска по глоссарию
 require_once get_template_directory() . '/inc/glossary-search.php';
 
+// Подключение системы валидации и безопасности
+require_once get_template_directory() . '/inc/security-validation.php';
+
+// Подключение системы rate limiting
+require_once get_template_directory() . '/inc/rate-limiting.php';
+
+// Подключение системы безопасности файлов
+require_once get_template_directory() . '/inc/file-security.php';
+
+// Подключение системы заголовков безопасности
+require_once get_template_directory() . '/inc/security-headers.php';
+
+// Подключение системы логирования безопасности
+require_once get_template_directory() . '/inc/security-logger.php';
+
+/**
+ * Увеличение лимитов загрузки для админки (плагины, темы)
+ */
+function cryptoschool_increase_upload_limits() {
+    // Увеличиваем лимиты только для админки
+    if (is_admin()) {
+        @ini_set('upload_max_filesize', '100M');
+        @ini_set('post_max_size', '100M');
+        @ini_set('max_execution_time', '300');
+        @ini_set('memory_limit', '256M');
+    }
+}
+add_action('admin_init', 'cryptoschool_increase_upload_limits');
+
+/**
+ * Увеличение времени жизни nonce для предотвращения истечения токенов
+ */
+function cryptoschool_extend_nonce_lifetime() {
+    return 2 * DAY_IN_SECONDS; // 2 дня вместо стандартных 12-24 часов
+}
+add_filter('nonce_life', 'cryptoschool_extend_nonce_lifetime');
+
+/**
+ * Дополнительные настройки для стабильной работы админки
+ */
+function cryptoschool_admin_improvements() {
+    if (is_admin() && current_user_can('install_plugins')) {
+        // Отключаем logged_out проверку для администраторов при установке плагинов
+        add_filter('nonce_user_logged_out', '__return_false');
+    }
+}
+add_action('admin_init', 'cryptoschool_admin_improvements');
+
 /**
  * Обновление правил перезаписи URL при активации темы
  */

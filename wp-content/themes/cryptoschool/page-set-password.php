@@ -12,8 +12,8 @@ if (is_user_logged_in()) {
 }
 
 // Проверяем наличие ключа и логина в URL
-$rp_key = isset($_GET['key']) ? $_GET['key'] : '';
-$rp_login = isset($_GET['login']) ? $_GET['login'] : '';
+$rp_key = isset($_GET['key']) ? sanitize_key($_GET['key']) : '';
+$rp_login = isset($_GET['login']) ? sanitize_user($_GET['login']) : '';
 
 // Если ключ или логин отсутствуют, перенаправляем на страницу восстановления пароля
 if (empty($rp_key) || empty($rp_login)) {
@@ -38,7 +38,7 @@ get_header();
         <?php
         // Вывод сообщений об ошибках
         if (isset($_GET['error'])) {
-            $error = $_GET['error'];
+            $error = sanitize_key($_GET['error']);
             switch ($error) {
                 case 'invalidkey':
                     echo '<div class="auth-message auth-message_error">Недействительный ключ для сброса пароля.</div>';
@@ -61,6 +61,7 @@ get_header();
         </div>
         
         <form id="resetpassform" method="post" action="<?php echo esc_url(site_url('wp-login.php?action=resetpass')); ?>">
+            <?php wp_nonce_field('cryptoschool_resetpass_action', 'cryptoschool_resetpass_nonce'); ?>
             <input type="hidden" name="rp_key" value="<?php echo esc_attr($rp_key); ?>">
             <input type="hidden" name="rp_login" value="<?php echo esc_attr($rp_login); ?>">
             

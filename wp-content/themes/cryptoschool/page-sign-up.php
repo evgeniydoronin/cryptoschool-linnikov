@@ -27,11 +27,11 @@ get_header();
       <div class="auth__form">
         <?php
         // Вывод сообщений об ошибках
-        if (isset($_GET['register']) && $_GET['register'] == 'failed') {
+        if (isset($_GET['register']) && $_GET['register'] === 'failed') {
             echo '<div class="auth-message auth-message_error">Ошибка регистрации. Пожалуйста, проверьте введенные данные.</div>';
-        } elseif (isset($_GET['register']) && $_GET['register'] == 'email_exists') {
+        } elseif (isset($_GET['register']) && $_GET['register'] === 'email_exists') {
             echo '<div class="auth-message auth-message_error">Пользователь с таким email уже существует.</div>';
-        } elseif (isset($_GET['register']) && $_GET['register'] == 'username_exists') {
+        } elseif (isset($_GET['register']) && $_GET['register'] === 'username_exists') {
             echo '<div class="auth-message auth-message_error">Пользователь с таким именем уже существует.</div>';
         }
         
@@ -39,6 +39,7 @@ get_header();
         if (get_option('users_can_register')) :
         ?>
             <form id="register-form" method="post" action="<?php echo esc_url(site_url('wp-login.php?action=register', 'login_post')); ?>" novalidate="novalidate">
+                <?php wp_nonce_field('cryptoschool_register_action', 'cryptoschool_register_nonce'); ?>
                 <div class="auth__header">
                     <h4 class="h4 auth__title">Зареєструватися</h4>
                     <div class="text-small auth__text">

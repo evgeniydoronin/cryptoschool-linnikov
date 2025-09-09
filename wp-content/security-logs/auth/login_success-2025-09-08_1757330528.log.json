@@ -1,0 +1,21 @@
+{
+    "timestamp": "2025-09-08 11:22:08",
+    "level": "info",
+    "category": "auth",
+    "event_type": "login_success",
+    "message": "Successful login for user: admin",
+    "ip": "192.168.65.1",
+    "user_agent": "Mozilla\/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/138.0.0.0 Safari\/537.36",
+    "request_uri": "\/wp-login.php",
+    "request_method": "POST",
+    "referer": "http:\/\/localhost:8080\/sign-in\/",
+    "user_id": 0,
+    "session_id": "26ae8f8a6f271dabc219f5d58809d9a3",
+    "context": {
+        "user_id": 1,
+        "user_roles": [
+            "administrator"
+        ],
+        "login_method": "standard"
+    }
+}

@@ -1,0 +1,183 @@
+# Claude Code Rules - WordPress Crypto Courses Project
+*Version: 2.0 | WordPress + WooCommerce + Referral System*
+
+## 🎯 PROJECT CONTEXT
+- **Stack**: WordPress 6.x, WooCommerce, WPML, Telegram Bot API
+- **Purpose**: Crypto courses with referral system and Telegram payments
+- **Critical**: Financial transactions, referral tracking, multi-language support
+- **PHP**: 8.0+ | **MySQL**: 8.0+ | **Environment**: Production-ready
+
+---
+
+## 🔴 SECTION 1: UNIVERSAL DEVELOPMENT RULES
+
+### MUST ALWAYS (Before Any Task)
+- Read existing code patterns in related files first
+- Check for existing utilities before creating new ones
+- Warn about breaking changes BEFORE implementing
+- Ask if refactoring >20 lines of code
+- Make MINIMAL changes to achieve the goal
+
+### NEVER (Universal Prohibitions)
+- Delete commented code or console.logs
+- Change indentation/formatting style
+- Modify database structure or migrations
+- Update dependencies without permission
+- Move files or reorganize structure
+- Remove error handling or try-catch blocks
+
+---
+
+## 🛡️ SECTION 2: WORDPRESS SECURITY (CRITICAL)
+
+### EVERY Request Must Have
+```php
+// Required security pattern
+if (!wp_verify_nonce($_POST['nonce'], 'action_name')) {
+    wp_die('Security check failed');
+}
+if (!current_user_can('required_capability')) {
+    wp_die('Insufficient permissions');
+}
+$sanitized = sanitize_text_field($_POST['field']);
+```
+
+### Database Queries - ONLY Prepared Statements
+```php
+// ALWAYS use this pattern
+$results = $wpdb->get_results($wpdb->prepare(
+    "SELECT * FROM {$wpdb->prefix}table WHERE user_id = %d",
+    $user_id
+));
+// NEVER: $wpdb->query("SELECT * WHERE id = $id")
+```
+
+---
+
+## 💰 SECTION 3: REFERRAL & PAYMENT SECURITY
+
+### Referral Validation Requirements
+- Check IP uniqueness (1 registration per hour)
+- Verify email before counting referral
+- 7-day waiting period before withdrawal
+- Log ALL financial activities with IP/timestamp
+- Two-tier balance: `pending_balance` vs `confirmed_balance`
+
+### Withdrawal Security Pattern
+```php
+function request_withdrawal($user_id, $amount) {
+    // 1. Check confirmed balance
+    // 2. Verify account age (>7 days)
+    // 3. Check daily limit ($100)
+    // 4. Create pending request
+    // 5. Send email verification
+    // 6. Log for admin review
+}
+```
+
+### Form Security Checklist
+- [ ] Nonce field added
+- [ ] Honeypot trap included
+- [ ] Rate limiting implemented
+- [ ] Input sanitization complete
+- [ ] SQL prepared statements used
+
+---
+
+## 🌐 SECTION 4: WPML & MULTILINGUAL
+
+### When Adding WPML Support
+```php
+// Check if WPML is active
+if (defined('ICL_LANGUAGE_CODE')) {
+    $current_lang = ICL_LANGUAGE_CODE;
+}
+
+// Register strings for translation
+icl_register_string('crypto-courses', 'string_name', $value);
+
+// Get translated string
+$translated = icl_t('crypto-courses', 'string_name', $default);
+
+// Use proper text domains
+__('Text to translate', 'crypto-courses');
+_e('Echo text', 'crypto-courses');
+```
+
+### WPML Best Practices
+- Register all custom post types with WPML
+- Use `wpml-config.xml` for custom fields
+- Never hardcode language codes
+- Test with at least 2 languages
+- Keep language switcher accessible
+
+---
+
+## ⚡ SECTION 5: TASK-SPECIFIC PATTERNS
+
+### For Bug Fixes
+1. Find root cause, not symptoms
+2. Fix ONLY what's broken
+3. Don't refactor nearby code
+4. Preserve all tests
+
+### For New Features
+1. Follow existing naming patterns
+2. Place in correct directories
+3. Add proper error handling
+4. Consider WPML from start
+
+### For Translations/WPML Tasks
+1. Check if WPML is installed and active
+2. Register strings properly with text domain
+3. Test language switching
+4. Verify URLs are translated
+5. Check if custom fields need translation
+
+---
+
+## 📋 QUICK REFERENCE
+
+### WordPress Functions Priority
+```php
+Sanitization:    sanitize_text_field(), esc_html(), esc_url()
+Validation:      wp_verify_nonce(), current_user_can()
+Database:        $wpdb->prepare() ALWAYS
+User Meta:       get_user_meta(), update_user_meta()
+Transients:      get_transient() for caching
+Options:         get_option() for settings
+```
+
+### Project Constants
+```php
+define('MIN_WITHDRAWAL', 10);
+define('MAX_DAILY_WITHDRAWAL', 100);
+define('REFERRAL_COMMISSION', 0.2);
+define('ACCOUNT_AGE_FOR_WITHDRAWAL', 7);
+```
+
+### Anti-Patterns to Avoid
+```php
+// NEVER do these:
+$_GET['param']                    // Use sanitize_text_field()
+$wpdb->query("... $variable")     // Use prepare()
+die()                             // Use wp_die()
+file_get_contents()               // Use wp_remote_get()
+```
+
+---
+
+## 🚀 EXECUTION CHECKLIST
+
+Before implementing ANY feature:
+1. ✓ Security measures in place (nonce, sanitization)
+2. ✓ WPML compatibility considered
+3. ✓ Referral system impact assessed
+4. ✓ Database queries prepared properly
+5. ✓ Error handling implemented
+6. ✓ Logging added for financial operations
+
+---
+
+**CRITICAL**: When dealing with money/referrals - security first, features second.
+**REMEMBER**: Minimal changes, maximum security, follow existing patterns.
