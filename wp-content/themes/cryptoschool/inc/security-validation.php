@@ -51,8 +51,37 @@ class CryptoSchool_Security_Validation {
      */
     public static function verify_nonce_register() {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            // Логируем начало проверки nonce
+            if (class_exists('CryptoSchool_Logger')) {
+                $logger = CryptoSchool_Logger::get_instance();
+                $logger->info('Проверка nonce для формы регистрации', [
+                    'has_nonce' => isset($_POST['cryptoschool_register_nonce']),
+                    'nonce_value_length' => isset($_POST['cryptoschool_register_nonce']) ? strlen($_POST['cryptoschool_register_nonce']) : 0,
+                    'timestamp' => date('Y-m-d H:i:s'),
+                    'remote_addr' => $_SERVER['REMOTE_ADDR'] ?? 'undefined'
+                ]);
+            }
+
             if (!isset($_POST['cryptoschool_register_nonce']) || !wp_verify_nonce($_POST['cryptoschool_register_nonce'], 'cryptoschool_register_action')) {
+                // Логируем ошибку nonce
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->error('Ошибка проверки nonce для формы регистрации', [
+                        'has_nonce' => isset($_POST['cryptoschool_register_nonce']),
+                        'nonce_value' => isset($_POST['cryptoschool_register_nonce']) ? substr($_POST['cryptoschool_register_nonce'], 0, 20) . '...' : 'not_set',
+                        'expected_action' => 'cryptoschool_register_action',
+                        'post_data_keys' => array_keys($_POST),
+                        'timestamp' => date('Y-m-d H:i:s')
+                    ]);
+                }
+
                 wp_die('Ошибка безопасности: неверный токен формы. Пожалуйста, попробуйте еще раз.', 'Security Error', ['response' => 403]);
+            }
+
+            // Логируем успешную проверку nonce
+            if (class_exists('CryptoSchool_Logger')) {
+                $logger->info('Nonce для формы регистрации успешно проверен', [
+                    'timestamp' => date('Y-m-d H:i:s')
+                ]);
             }
         }
     }
@@ -88,51 +117,168 @@ class CryptoSchool_Security_Validation {
      * @return WP_Error
      */
     public static function validate_registration_data($errors, $sanitized_user_login, $user_email) {
-        // Валидация имени пользователя
-        if (empty($sanitized_user_login)) {
-            $errors->add('empty_username', 'Имя пользователя обязательно для заполнения.');
-        } elseif (strlen($sanitized_user_login) < 3) {
-            $errors->add('username_too_short', 'Имя пользователя должно содержать не менее 3 символов.');
-        } elseif (strlen($sanitized_user_login) > 60) {
-            $errors->add('username_too_long', 'Имя пользователя не должно превышать 60 символов.');
-        } elseif (!preg_match('/^[a-zA-Z0-9_\-\.]+$/', $sanitized_user_login)) {
-            $errors->add('invalid_username', 'Имя пользователя может содержать только буквы, цифры, подчеркивания, дефисы и точки.');
+        // Логируем начало валидации данных регистрации
+        if (class_exists('CryptoSchool_Logger')) {
+            $logger = CryptoSchool_Logger::get_instance();
+            $logger->info('Начало валидации данных регистрации', [
+                'sanitized_user_login' => $sanitized_user_login,
+                'user_email' => $user_email,
+                'post_data_keys' => isset($_POST) ? array_keys($_POST) : [],
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
         }
-        
-        // Валидация email
-        if (empty($user_email)) {
-            $errors->add('empty_email', 'Email обязателен для заполнения.');
-        } elseif (!is_email($user_email)) {
-            $errors->add('invalid_email', 'Пожалуйста, введите действительный email адрес.');
-        }
-        
-        // Валидация пароля (если указан)
-        if (isset($_POST['user_pass']) && !empty($_POST['user_pass'])) {
-            $password = $_POST['user_pass'];
-            $password_confirmation = isset($_POST['user_pass2']) ? $_POST['user_pass2'] : '';
-            
-            $password_errors = self::validate_password($password, $password_confirmation, $sanitized_user_login, $user_email);
-            if (!empty($password_errors)) {
-                foreach ($password_errors as $error_code => $error_message) {
-                    $errors->add($error_code, $error_message);
+
+        try {
+            // Валидация имени пользователя
+            if (empty($sanitized_user_login)) {
+                $errors->add('empty_username', 'Имя пользователя обязательно для заполнения.');
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->warning('Пустое имя пользователя при регистрации', [
+                        'sanitized_user_login' => $sanitized_user_login
+                    ]);
+                }
+            } elseif (strlen($sanitized_user_login) < 3) {
+                $errors->add('username_too_short', 'Имя пользователя должно содержать не менее 3 символов.');
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->warning('Слишком короткое имя пользователя', [
+                        'sanitized_user_login' => $sanitized_user_login,
+                        'length' => strlen($sanitized_user_login)
+                    ]);
+                }
+            } elseif (strlen($sanitized_user_login) > 60) {
+                $errors->add('username_too_long', 'Имя пользователя не должно превышать 60 символов.');
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->warning('Слишком длинное имя пользователя', [
+                        'sanitized_user_login' => $sanitized_user_login,
+                        'length' => strlen($sanitized_user_login)
+                    ]);
+                }
+            } elseif (!preg_match('/^[a-zA-Z0-9_\-\.]+$/', $sanitized_user_login)) {
+                $errors->add('invalid_username', 'Имя пользователя может содержать только буквы, цифры, подчеркивания, дефисы и точки.');
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->warning('Недопустимые символы в имени пользователя', [
+                        'sanitized_user_login' => $sanitized_user_login
+                    ]);
                 }
             }
-        }
-        
-        // Валидация номера телефона (если указан)
-        if (isset($_POST['user_phone']) && !empty($_POST['user_phone'])) {
-            $phone = sanitize_text_field($_POST['user_phone']);
-            if (!self::validate_phone($phone)) {
-                $errors->add('invalid_phone', 'Пожалуйста, введите действительный номер телефона.');
+
+            // Валидация email
+            if (empty($user_email)) {
+                $errors->add('empty_email', 'Email обязателен для заполнения.');
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->warning('Пустой email при регистрации', [
+                        'user_email' => $user_email
+                    ]);
+                }
+            } elseif (!is_email($user_email)) {
+                $errors->add('invalid_email', 'Пожалуйста, введите действительный email адрес.');
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->warning('Недопустимый формат email', [
+                        'user_email' => $user_email
+                    ]);
+                }
             }
+
+            // Валидация пароля (если указан)
+            if (isset($_POST['user_pass']) && !empty($_POST['user_pass'])) {
+                $password = $_POST['user_pass'];
+                $password_confirmation = isset($_POST['user_pass2']) ? $_POST['user_pass2'] : '';
+
+                // Диагностическое логирование пароля отключено - проблема решена
+
+                $password_errors = self::validate_password($password, $password_confirmation, $sanitized_user_login, $user_email);
+                if (!empty($password_errors)) {
+                    foreach ($password_errors as $error_code => $error_message) {
+                        $errors->add($error_code, $error_message);
+                    }
+
+                    if (class_exists('CryptoSchool_Logger')) {
+                        $logger->warning('Ошибки валидации пароля', [
+                            'password_errors' => $password_errors
+                        ]);
+                    }
+                }
+            }
+
+            // Валидация номера телефона (если указан)
+            if (isset($_POST['user_phone']) && !empty($_POST['user_phone'])) {
+                $phone = sanitize_text_field($_POST['user_phone']);
+                if (!self::validate_phone($phone)) {
+                    $errors->add('invalid_phone', 'Пожалуйста, введите действительный номер телефона.');
+                    if (class_exists('CryptoSchool_Logger')) {
+                        $logger->warning('Недопустимый формат номера телефона', [
+                            'user_phone' => $phone
+                        ]);
+                    }
+                } else {
+                    if (class_exists('CryptoSchool_Logger')) {
+                        $logger->info('Номер телефона прошел валидацию', [
+                            'user_phone' => $phone
+                        ]);
+                    }
+                }
+            }
+
+            // Проверка согласия с условиями
+            if (!isset($_POST['agree']) || $_POST['agree'] !== 'on') {
+                $errors->add('terms_not_accepted', 'Вы должны согласиться с условиями использования и политикой конфиденциальности.');
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->warning('Не согласен с условиями использования', [
+                        'agree_value' => isset($_POST['agree']) ? $_POST['agree'] : 'not_set'
+                    ]);
+                }
+            }
+
+            // Логируем итоги валидации
+            if (class_exists('CryptoSchool_Logger')) {
+                $logger->info('Завершение валидации данных регистрации', [
+                    'has_errors' => $errors->has_errors(),
+                    'error_codes' => $errors->get_error_codes(),
+                    'timestamp' => date('Y-m-d H:i:s')
+                ]);
+            }
+
+            // Логируем итоги валидации (без прерывания процесса)
+            if ($errors->has_errors()) {
+                // Логируем ошибки валидации, но НЕ прерываем процесс
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->warning('Обнаружены ошибки валидации, возвращаем их WordPress для обработки', [
+                        'error_codes' => $errors->get_error_codes(),
+                        'error_messages' => $errors->get_error_messages(),
+                        'timestamp' => date('Y-m-d H:i:s')
+                    ]);
+                }
+            } else {
+                // Логируем успешную валидацию
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->info('Валидация прошла успешно, пользователь будет создан', [
+                        'sanitized_user_login' => $sanitized_user_login,
+                        'user_email' => $user_email,
+                        'timestamp' => date('Y-m-d H:i:s')
+                    ]);
+                }
+            }
+
+            // Возвращаем ошибки WordPress для стандартной обработки
+            // WordPress сам решит, создавать пользователя или показывать ошибки
+            return $errors;
+
+        } catch (Exception $e) {
+            // Логируем критическую ошибку валидации
+            if (class_exists('CryptoSchool_Logger')) {
+                $logger->error('Критическая ошибка валидации данных регистрации', [
+                    'error_message' => $e->getMessage(),
+                    'error_file' => $e->getFile(),
+                    'error_line' => $e->getLine(),
+                    'sanitized_user_login' => $sanitized_user_login,
+                    'user_email' => $user_email
+                ]);
+            }
+
+            // Добавляем ошибку в объект ошибок
+            $errors->add('validation_error', 'Произошла ошибка при валидации данных. Пожалуйста, попробуйте еще раз.');
+            return $errors;
         }
-        
-        // Проверка согласия с условиями
-        if (!isset($_POST['agree']) || $_POST['agree'] !== 'on') {
-            $errors->add('terms_not_accepted', 'Вы должны согласиться с условиями использования и политикой конфиденциальности.');
-        }
-        
-        return $errors;
     }
     
     /**

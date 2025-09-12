@@ -5,8 +5,28 @@
  * @package CryptoSchool
  */
 
+// Логируем загрузку страницы регистрации
+if (class_exists('CryptoSchool_Logger')) {
+    $logger = CryptoSchool_Logger::get_instance();
+    $logger->info('Загрузка страницы регистрации (sign-up)', [
+        'timestamp' => date('Y-m-d H:i:s'),
+        'request_uri' => $_SERVER['REQUEST_URI'] ?? 'undefined',
+        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'undefined',
+        'remote_addr' => $_SERVER['REMOTE_ADDR'] ?? 'undefined',
+        'request_method' => $_SERVER['REQUEST_METHOD'] ?? 'undefined',
+        'is_user_logged_in' => is_user_logged_in(),
+        'current_user_id' => get_current_user_id()
+    ]);
+}
+
 // Если пользователь уже авторизован, перенаправляем на главную страницу
 if (is_user_logged_in()) {
+    if (class_exists('CryptoSchool_Logger')) {
+        $logger->info('Пользователь уже авторизован, перенаправление на главную', [
+            'user_id' => get_current_user_id(),
+            'redirect_url' => home_url()
+        ]);
+    }
     wp_redirect(home_url());
     exit;
 }
@@ -28,7 +48,53 @@ get_header();
         <?php
         // Вывод сообщений об ошибках
         if (isset($_GET['register']) && $_GET['register'] === 'failed') {
-            echo '<div class="auth-message auth-message_error">Ошибка регистрации. Пожалуйста, проверьте введенные данные.</div>';
+            $error_messages = [];
+            
+            if (isset($_GET['errors'])) {
+                $error_codes = explode(',', $_GET['errors']);
+                foreach ($error_codes as $error_code) {
+                    switch ($error_code) {
+                        case 'password_contains_username':
+                            $error_messages[] = 'Пароль не должен содержать имя пользователя';
+                            break;
+                        case 'password_contains_email':
+                            $error_messages[] = 'Пароль не должен содержать часть email адреса';
+                            break;
+                        case 'password_too_weak':
+                            $error_messages[] = 'Пароль слишком слабый. Используйте минимум 3 из 4 типов символов';
+                            break;
+                        case 'password_too_short':
+                            $error_messages[] = 'Пароль должен содержать не менее 8 символов';
+                            break;
+                        case 'password_mismatch':
+                            $error_messages[] = 'Пароли не совпадают';
+                            break;
+                        case 'terms_not_accepted':
+                            $error_messages[] = 'Необходимо согласиться с условиями использования';
+                            break;
+                        case 'invalid_email':
+                            $error_messages[] = 'Некорректный email адрес';
+                            break;
+                        case 'username_too_short':
+                            $error_messages[] = 'Имя пользователя слишком короткое';
+                            break;
+                        default:
+                            $error_messages[] = 'Ошибка валидации данных';
+                            break;
+                    }
+                }
+            }
+            
+            if (!empty($error_messages)) {
+                echo '<div class="auth-message auth-message_error">';
+                echo '<strong>Исправьте следующие ошибки:</strong><br>';
+                foreach ($error_messages as $message) {
+                    echo '• ' . esc_html($message) . '<br>';
+                }
+                echo '</div>';
+            } else {
+                echo '<div class="auth-message auth-message_error">Ошибка регистрации. Пожалуйста, проверьте введенные данные.</div>';
+            }
         } elseif (isset($_GET['register']) && $_GET['register'] === 'email_exists') {
             echo '<div class="auth-message auth-message_error">Пользователь с таким email уже существует.</div>';
         } elseif (isset($_GET['register']) && $_GET['register'] === 'username_exists') {
@@ -106,7 +172,10 @@ get_header();
                 </div>
                 
                 <div class="auth__footer">
-                    <button type="submit" class="auth__submit text">Створити обліковий запис</button>
+                    <button type="submit" class="auth__submit text" id="register-submit-btn" disabled>Створити обліковий запис</button>
+                    <div id="password-hint" class="auth__password-hint text-small" style="display: none; color: #ff6b6b; margin-top: 8px;">
+                        Пароль должен содержать минимум 3 из 4 типов символов: строчные буквы, заглавные буквы, цифры, специальные символы. Пароль не должен содержать имя пользователя или часть email адреса.
+                    </div>
                     <a href="<?php echo esc_url(site_url('/sign-in/')); ?>" class="auth__other-way auth_base text-small">
                         Вже маєте обліковий запис? <span class="auth_highlight">Увійдіть</span>
                     </a>
@@ -114,7 +183,48 @@ get_header();
                 
                 <!-- Скрытое поле для перенаправления после регистрации -->
                 <input type="hidden" name="redirect_to" value="<?php echo esc_url(home_url('/?registration=success')); ?>">
-                
+
+                <!-- JavaScript для логирования отправки формы -->
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const registerForm = document.getElementById('register-form');
+                    if (registerForm) {
+                        registerForm.addEventListener('submit', function(e) {
+                            // Логируем отправку формы регистрации
+                            console.log('Форма регистрации отправлена', {
+                                timestamp: new Date().toISOString(),
+                                userAgent: navigator.userAgent,
+                                formData: {
+                                    hasUserLogin: !!document.getElementById('user_login').value,
+                                    hasUserEmail: !!document.getElementById('user_email').value,
+                                    hasUserPass: !!document.getElementById('user_pass').value,
+                                    hasUserPhone: !!document.getElementById('user_phone').value,
+                                    agreeChecked: document.getElementById('agree').checked
+                                }
+                            });
+
+                            // Отправляем данные на сервер для логирования через AJAX
+                            fetch('<?php echo admin_url('admin-ajax.php'); ?>', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                },
+                                body: new URLSearchParams({
+                                    action: 'cryptoschool_log_registration_attempt',
+                                    nonce: '<?php echo wp_create_nonce('cryptoschool_log_registration'); ?>',
+                                    user_login: document.getElementById('user_login').value.substring(0, 50), // Ограничиваем длину
+                                    user_email: document.getElementById('user_email').value,
+                                    has_phone: !!document.getElementById('user_phone').value,
+                                    agree_checked: document.getElementById('agree').checked
+                                })
+                            }).catch(function(error) {
+                                console.warn('Не удалось отправить лог регистрации:', error);
+                            });
+                        });
+                    }
+                });
+                </script>
+
                 <!-- <div class="auth__separator">
                     <div class="auth__separator-line"></div>
                     <span class="text-small">Або увійдіть за допомогою</span>

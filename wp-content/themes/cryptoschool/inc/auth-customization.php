@@ -345,14 +345,99 @@ class CryptoSchool_Auth_Customization {
      * @param int $user_id ID пользователя
      */
     public static function set_user_role($user_id) {
-        $user = new WP_User($user_id);
-        
-        // Назначаем роль "cryptoschool_student"
-        $user->set_role('cryptoschool_student');
-        
-        // Сохранение дополнительных данных пользователя
-        if (isset($_POST['user_phone'])) {
-            update_user_meta($user_id, 'user_phone', sanitize_text_field($_POST['user_phone']));
+        // Логируем начало процесса назначения роли
+        if (class_exists('CryptoSchool_Logger')) {
+            $logger = CryptoSchool_Logger::get_instance();
+            $logger->info('Начало назначения роли пользователю', [
+                'user_id' => $user_id,
+                'timestamp' => date('Y-m-d H:i:s'),
+                'request_uri' => $_SERVER['REQUEST_URI'] ?? 'undefined',
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'undefined'
+            ]);
+        }
+
+        try {
+            $user = new WP_User($user_id);
+
+            // Проверяем, существует ли пользователь
+            if (!$user->exists()) {
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->error('Пользователь не найден при назначении роли', [
+                        'user_id' => $user_id,
+                        'user_object' => $user
+                    ]);
+                }
+                return;
+            }
+
+            // Логируем перед назначением роли
+            if (class_exists('CryptoSchool_Logger')) {
+                $logger->info('Попытка назначения роли cryptoschool_student', [
+                    'user_id' => $user_id,
+                    'current_roles' => $user->roles,
+                    'user_login' => $user->user_login
+                ]);
+            }
+
+            // Назначаем роль "cryptoschool_student"
+            $user->set_role('cryptoschool_student');
+
+            // Проверяем, была ли роль назначена успешно
+            $user->get_role_caps(); // Обновляем данные ролей
+            $has_role = in_array('cryptoschool_student', $user->roles);
+
+            if ($has_role) {
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->info('Роль cryptoschool_student успешно назначена', [
+                        'user_id' => $user_id,
+                        'user_roles' => $user->roles
+                    ]);
+                }
+            } else {
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->warning('Роль cryptoschool_student не была назначена', [
+                        'user_id' => $user_id,
+                        'user_roles' => $user->roles,
+                        'available_roles' => wp_roles()->roles
+                    ]);
+                }
+            }
+
+            // Сохранение дополнительных данных пользователя
+            if (isset($_POST['user_phone'])) {
+                $phone = sanitize_text_field($_POST['user_phone']);
+                update_user_meta($user_id, 'user_phone', $phone);
+
+                if (class_exists('CryptoSchool_Logger')) {
+                    $logger->info('Телефон пользователя сохранен', [
+                        'user_id' => $user_id,
+                        'phone_length' => strlen($phone)
+                    ]);
+                }
+            }
+
+            // Логируем успешное завершение
+            if (class_exists('CryptoSchool_Logger')) {
+                $logger->info('Процесс назначения роли завершен успешно', [
+                    'user_id' => $user_id,
+                    'final_roles' => $user->roles
+                ]);
+            }
+
+        } catch (Exception $e) {
+            // Логируем критическую ошибку
+            if (class_exists('CryptoSchool_Logger')) {
+                $logger->error('Критическая ошибка при назначении роли пользователю', [
+                    'user_id' => $user_id,
+                    'error_message' => $e->getMessage(),
+                    'error_file' => $e->getFile(),
+                    'error_line' => $e->getLine(),
+                    'error_trace' => $e->getTraceAsString()
+                ]);
+            }
+
+            // Не выбрасываем исключение дальше, чтобы не ломать процесс регистрации
+            error_log('CryptoSchool: Critical error in set_user_role: ' . $e->getMessage());
         }
     }
     

@@ -5,15 +5,23 @@
  * @package CryptoSchool
  */
 
-// ТЕСТОВОЕ ЛОГИРОВАНИЕ через CryptoSchool_Logger
-if (class_exists('CryptoSchool_Logger')) {
-    $logger = CryptoSchool_Logger::get_instance();
-    $logger->info('Тестовое сообщение из functions.php', [
-        'timestamp' => date('Y-m-d H:i:s'),
-        'request_uri' => $_SERVER['REQUEST_URI'] ?? 'undefined',
-        'source' => 'theme_functions'
-    ]);
-}
+// ТЕСТОВОЕ ЛОГИРОВАНИЕ отключено для экономии места в логах
+// if (class_exists('CryptoSchool_Logger')) {
+//     $logger = CryptoSchool_Logger::get_instance();
+//     $logger->info('Тестовое сообщение из functions.php', [
+//         'timestamp' => date('Y-m-d H:i:s'),
+//         'request_uri' => $_SERVER['REQUEST_URI'] ?? 'undefined',
+//         'source' => 'theme_functions'
+//     ]);
+
+//     // Логируем загрузку functions.php
+//     $logger->info('Загрузка functions.php завершена', [
+//         'timestamp' => date('Y-m-d H:i:s'),
+//         'wp_version' => get_bloginfo('version'),
+//         'theme_version' => wp_get_theme()->get('Version'),
+//         'php_version' => PHP_VERSION
+//     ]);
+// }
 
 // Подключение автозагрузчика Composer
 if (file_exists(dirname(__DIR__, 3) . '/vendor/autoload.php')) {
@@ -100,6 +108,32 @@ flush_rewrite_rules();
 
 
 /**
+ * Отключение автоматических писем сброса пароля при регистрации с паролем
+ */
+function cryptoschool_disable_new_user_notification_email($wp_new_user_notification_email, $user, $blogname) {
+    // Проверяем, была ли регистрация с паролем
+    if (isset($_POST['user_pass']) && !empty($_POST['user_pass'])) {
+        // Логируем отключение письма
+        if (class_exists('CryptoSchool_Logger')) {
+            $logger = CryptoSchool_Logger::get_instance();
+            $logger->info('Отключение письма сброса пароля для регистрации с паролем', [
+                'user_id' => $user->ID,
+                'user_login' => $user->user_login,
+                'user_email' => $user->user_email,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        }
+        
+        // Возвращаем null чтобы отключить отправку письма
+        return null;
+    }
+    
+    // Для регистраций без пароля оставляем стандартное поведение
+    return $wp_new_user_notification_email;
+}
+add_filter('wp_new_user_notification_email', 'cryptoschool_disable_new_user_notification_email', 10, 3);
+
+/**
  * Перенаправление после регистрации
  * 
  * @param string $redirect_to URL для перенаправления
@@ -117,10 +151,48 @@ add_filter('registration_redirect', 'cryptoschool_registration_redirect', 10, 3)
  * Перехват формы регистрации
  */
 function cryptoschool_register_form_override() {
-    // Если это POST-запрос на регистрацию
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_REQUEST['action']) && $_REQUEST['action'] == 'register') {
-        // Добавляем хук, который будет срабатывать после регистрации пользователя
-        add_action('login_redirect', 'cryptoschool_after_register_redirect', 10, 3);
+    // Логируем начало обработки формы регистрации
+    if (class_exists('CryptoSchool_Logger')) {
+        $logger = CryptoSchool_Logger::get_instance();
+        $logger->info('Начало обработки формы регистрации', [
+            'request_method' => $_SERVER['REQUEST_METHOD'] ?? 'undefined',
+            'action' => $_REQUEST['action'] ?? 'undefined',
+            'timestamp' => date('Y-m-d H:i:s'),
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'undefined',
+            'remote_addr' => $_SERVER['REMOTE_ADDR'] ?? 'undefined'
+        ]);
+    }
+
+    try {
+        // Если это POST-запрос на регистрацию
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_REQUEST['action']) && $_REQUEST['action'] == 'register') {
+            // Логируем получение POST-запроса на регистрацию
+            if (class_exists('CryptoSchool_Logger')) {
+                $logger->info('Получен POST-запрос на регистрацию', [
+                    'post_data_keys' => array_keys($_POST),
+                    'has_user_login' => isset($_POST['user_login']),
+                    'has_user_email' => isset($_POST['user_email']),
+                    'has_user_pass' => isset($_POST['user_pass'])
+                ]);
+            }
+
+            // Добавляем хук, который будет срабатывать после регистрации пользователя
+            add_action('login_redirect', 'cryptoschool_after_register_redirect', 10, 3);
+        }
+    } catch (Exception $e) {
+        // Логируем ошибку в обработке формы регистрации
+        if (class_exists('CryptoSchool_Logger')) {
+            $logger->error('Ошибка в обработке формы регистрации', [
+                'error_message' => $e->getMessage(),
+                'error_file' => $e->getFile(),
+                'error_line' => $e->getLine(),
+                'request_method' => $_SERVER['REQUEST_METHOD'] ?? 'undefined',
+                'action' => $_REQUEST['action'] ?? 'undefined'
+            ]);
+        }
+
+        // Не выбрасываем исключение дальше
+        error_log('CryptoSchool: Error in register form override: ' . $e->getMessage());
     }
 }
 add_action('login_form_register', 'cryptoschool_register_form_override');
@@ -129,13 +201,59 @@ add_action('login_form_register', 'cryptoschool_register_form_override');
  * Перенаправление после успешной регистрации
  */
 function cryptoschool_after_register_redirect($redirect_to, $requested_redirect_to, $user) {
-    // Если пользователь не авторизован, возвращаем стандартное перенаправление
-    if (!is_a($user, 'WP_User')) {
+    // Логируем начало процесса перенаправления
+    if (class_exists('CryptoSchool_Logger')) {
+        $logger = CryptoSchool_Logger::get_instance();
+        $logger->info('Начало перенаправления после регистрации', [
+            'redirect_to' => $redirect_to,
+            'requested_redirect_to' => $requested_redirect_to,
+            'user_id' => is_a($user, 'WP_User') ? $user->ID : 'not_user_object',
+            'user_login' => is_a($user, 'WP_User') ? $user->user_login : 'not_user_object',
+            'timestamp' => date('Y-m-d H:i:s')
+        ]);
+    }
+
+    try {
+        // Если пользователь не авторизован, возвращаем стандартное перенаправление
+        if (!is_a($user, 'WP_User')) {
+            if (class_exists('CryptoSchool_Logger')) {
+                $logger->warning('Пользователь не авторизован при перенаправлении', [
+                    'user_object' => $user,
+                    'redirect_to' => $redirect_to
+                ]);
+            }
+            return $redirect_to;
+        }
+
+        // Логируем успешное перенаправление
+        if (class_exists('CryptoSchool_Logger')) {
+            $logger->info('Перенаправление после успешной регистрации', [
+                'user_id' => $user->ID,
+                'user_login' => $user->user_login,
+                'user_roles' => $user->roles,
+                'final_redirect_url' => home_url('/?registration=success')
+            ]);
+        }
+
+        // Перенаправляем на главную страницу с параметром registration=success
+        return home_url('/?registration=success');
+
+    } catch (Exception $e) {
+        // Логируем ошибку перенаправления
+        if (class_exists('CryptoSchool_Logger')) {
+            $logger->error('Ошибка при перенаправлении после регистрации', [
+                'error_message' => $e->getMessage(),
+                'error_file' => $e->getFile(),
+                'error_line' => $e->getLine(),
+                'user_id' => is_a($user, 'WP_User') ? $user->ID : 'not_user_object',
+                'redirect_to' => $redirect_to
+            ]);
+        }
+
+        // В случае ошибки возвращаем стандартное перенаправление
+        error_log('CryptoSchool: Error in after register redirect: ' . $e->getMessage());
         return $redirect_to;
     }
-    
-    // Перенаправляем на главную страницу с параметром registration=success
-    return home_url('/?registration=success');
 }
 
 /**
@@ -149,7 +267,7 @@ function cryptoschool_registration_success_message() {
                 // Создаем элемент для сообщения
                 var messageElement = document.createElement('div');
                 messageElement.className = 'auth-message auth-message_success auth-message_popup';
-                messageElement.innerHTML = 'Регистрация успешно завершена. Пожалуйста, проверьте вашу электронную почту для подтверждения регистрации.';
+                messageElement.innerHTML = 'Регистрация успешно завершена! Теперь вы можете войти в свой аккаунт.';
                 
                 // Добавляем стили для всплывающего сообщения
                 var style = document.createElement('style');
@@ -282,6 +400,24 @@ function cryptoschool_enqueue_frontend_assets() {
         filemtime(get_template_directory() . '/frontend-source/dist/assets/main.js'),
         true
     );
+    
+    // Подключение скрипта и стилей валидации регистрации только на странице регистрации
+    if (is_page('sign-up')) {
+        wp_enqueue_style(
+            'cryptoschool-registration-validation-css',
+            get_template_directory_uri() . '/assets/css/registration-validation.css',
+            array('cryptoschool-main-style'),
+            filemtime(get_template_directory() . '/assets/css/registration-validation.css')
+        );
+        
+        wp_enqueue_script(
+            'cryptoschool-registration-validation',
+            get_template_directory_uri() . '/assets/js/registration-validation.js',
+            array(),
+            filemtime(get_template_directory() . '/assets/js/registration-validation.js'),
+            true
+        );
+    }
 }
 add_action('wp_enqueue_scripts', 'cryptoschool_enqueue_frontend_assets');
 
@@ -360,3 +496,73 @@ function cryptoschool_init_drawers_script() {
     <?php
 }
 add_action('wp_footer', 'cryptoschool_init_drawers_script', 100);
+
+/**
+ * AJAX обработчик для логирования попыток регистрации
+ */
+function cryptoschool_log_registration_attempt() {
+    // Проверяем nonce для безопасности
+    if (!wp_verify_nonce($_POST['nonce'] ?? '', 'cryptoschool_log_registration')) {
+        wp_die('Security check failed');
+    }
+
+    // Логируем попытку регистрации через AJAX
+    if (class_exists('CryptoSchool_Logger')) {
+        $logger = CryptoSchool_Logger::get_instance();
+        $logger->info('Попытка регистрации через AJAX', [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'user_login' => sanitize_text_field($_POST['user_login'] ?? ''),
+            'user_email' => sanitize_email($_POST['user_email'] ?? ''),
+            'has_phone' => $_POST['has_phone'] ?? false,
+            'agree_checked' => $_POST['agree_checked'] ?? false,
+            'remote_addr' => $_SERVER['REMOTE_ADDR'] ?? 'undefined',
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'undefined'
+        ]);
+    }
+
+    // Возвращаем успешный ответ
+    wp_send_json_success(['status' => 'logged']);
+}
+add_action('wp_ajax_cryptoschool_log_registration_attempt', 'cryptoschool_log_registration_attempt');
+add_action('wp_ajax_nopriv_cryptoschool_log_registration_attempt', 'cryptoschool_log_registration_attempt');
+
+/**
+ * ИСПРАВЛЕНИЕ ПРОБЛЕМЫ С ПАРОЛЕМ ПРИ РЕГИСТРАЦИИ
+ * 
+ * WordPress функция register_new_user() игнорирует пароль из $_POST
+ * и генерирует случайный. Этот хук перехватывает данные перед вставкой
+ * в БД и заменяет сгенерированный пароль на пароль из формы.
+ */
+add_filter('wp_pre_insert_user_data', 'cryptoschool_use_custom_password', 10, 4);
+function cryptoschool_use_custom_password($data, $update, $user_id, $userdata) {
+    // Только для новых пользователей (не обновление) и только если есть пароль в POST
+    if (!$update && isset($_POST['user_pass']) && !empty($_POST['user_pass'])) {
+        // Дополнительная проверка - убеждаемся что это регистрация
+        $is_registration = (
+            isset($_POST['action']) && $_POST['action'] === 'register'
+        ) || (
+            isset($_REQUEST['action']) && $_REQUEST['action'] === 'register'
+        ) || (
+            strpos($_SERVER['REQUEST_URI'] ?? '', 'wp-login.php') !== false &&
+            isset($_GET['action']) && $_GET['action'] === 'register'
+        );
+        
+        if (!$is_registration) {
+            return $data; // Не регистрация - не трогаем пароль
+        }
+        
+        // Получаем пароль из POST
+        $custom_password = $_POST['user_pass'];
+        
+        // Хешируем пароль
+        $hashed_password = wp_hash_password($custom_password);
+        
+        // Заменяем сгенерированный пароль на наш
+        $data['user_pass'] = $hashed_password;
+    }
+    
+    return $data;
+}
+
+// ДИАГНОСТИЧЕСКОЕ ЛОГИРОВАНИЕ ОТКЛЮЧЕНО - проблема решена
+// Избыточное логирование может вызывать критические ошибки WordPress

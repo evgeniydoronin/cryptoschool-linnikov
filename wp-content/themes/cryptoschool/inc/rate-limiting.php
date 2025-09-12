@@ -204,8 +204,8 @@ class CryptoSchool_Rate_Limiting {
             return;
         }
         
-        // 3 регистрации в течение часа
-        if (self::is_rate_limited('register', 3, 3600)) {
+        // 20 регистраций в течение часа
+        if (self::is_rate_limited('register', 20, 3600)) {
             self::log_suspicious_activity('register_rate_limit', 'Too many registration attempts');
             
             wp_die(
@@ -224,8 +224,8 @@ class CryptoSchool_Rate_Limiting {
             return;
         }
         
-        // 3 запроса на восстановление в течение часа
-        if (self::is_rate_limited('lostpassword', 3, 3600)) {
+        // 10 запросов на восстановление в течение часа
+        if (self::is_rate_limited('lostpassword', 10, 3600)) {
             self::log_suspicious_activity('lostpassword_rate_limit', 'Too many password reset attempts');
             
             wp_die(

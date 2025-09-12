@@ -226,7 +226,7 @@ class CryptoSchool {
         
         // Инициализация логгера
         $logger = CryptoSchool_Logger::get_instance();
-        $logger->info('Плагин CryptoSchool инициализирован', ['version' => CRYPTOSCHOOL_VERSION]);
+        // $logger->info('Плагин CryptoSchool инициализирован', ['version' => CRYPTOSCHOOL_VERSION]); // ВРЕМЕННО ОТКЛЮЧЕНО для диагностики
     }
 
     /**

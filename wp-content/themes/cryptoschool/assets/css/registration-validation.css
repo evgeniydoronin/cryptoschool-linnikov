@@ -1,0 +1,153 @@
+/**
+ * Стили для валидации формы регистрации
+ */
+
+/* Стили для отключенной кнопки */
+.auth__submit:disabled {
+    opacity: 0.6 !important;
+    cursor: not-allowed !important;
+    pointer-events: none;
+}
+
+.auth__submit:not(:disabled) {
+    opacity: 1;
+    cursor: pointer;
+}
+
+/* Стили для подсказки пароля */
+.auth__password-hint {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background-color: rgba(255, 107, 107, 0.1);
+    border: 1px solid rgba(255, 107, 107, 0.3);
+    border-radius: 4px;
+    color: #ff6b6b;
+    font-size: 12px;
+    line-height: 1.4;
+    display: none;
+}
+
+/* Анимация появления подсказки */
+.auth__password-hint.show {
+    display: block;
+    animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Стили для полей с ошибками */
+.auth-field__input.error {
+    border-color: #ff6b6b !important;
+    box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2) !important;
+}
+
+.auth-field__input.success {
+    border-color: #34c759 !important;
+    box-shadow: 0 0 0 2px rgba(52, 199, 89, 0.2) !important;
+}
+
+/* Стили для чекбокса согласия */
+.auth__checkbox.error .checkbox__body {
+    border-color: #ff6b6b !important;
+}
+
+.auth__checkbox.success .checkbox__body {
+    border-color: #34c759 !important;
+}
+
+/* Индикатор силы пароля */
+.password-strength-indicator {
+    margin-top: 4px;
+    height: 4px;
+    background-color: #e0e0e0;
+    border-radius: 2px;
+    overflow: hidden;
+    display: none;
+}
+
+.password-strength-indicator.show {
+    display: block;
+}
+
+.password-strength-bar {
+    height: 100%;
+    transition: width 0.3s ease, background-color 0.3s ease;
+    border-radius: 2px;
+}
+
+.password-strength-bar.weak {
+    width: 25%;
+    background-color: #ff6b6b;
+}
+
+.password-strength-bar.fair {
+    width: 50%;
+    background-color: #ffb347;
+}
+
+.password-strength-bar.good {
+    width: 75%;
+    background-color: #87ceeb;
+}
+
+.password-strength-bar.strong {
+    width: 100%;
+    background-color: #34c759;
+}
+
+/* Стили для всплывающих подсказок */
+.field-tooltip {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background-color: #333;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    z-index: 1000;
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    pointer-events: none;
+}
+
+.field-tooltip.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.field-tooltip::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: 12px;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 4px solid #333;
+}
+
+/* Адаптивные стили */
+@media (max-width: 768px) {
+    .auth__password-hint {
+        font-size: 11px;
+        padding: 6px 10px;
+    }
+    
+    .field-tooltip {
+        font-size: 11px;
+        padding: 6px 10px;
+    }
+}
