@@ -61,6 +61,9 @@ require_once get_template_directory() . '/inc/security-headers.php';
 // Подключение системы логирования безопасности
 require_once get_template_directory() . '/inc/security-logger.php';
 
+// Подключение контроллеров
+require_once get_template_directory() . '/inc/controllers/CryptoSchool_Lesson_Controller.php';
+
 /**
  * Увеличение лимитов загрузки для админки (плагины, темы)
  */
@@ -423,6 +426,27 @@ function cryptoschool_enqueue_frontend_assets() {
             true
         );
     }
+    
+    // Подключение стилей и скриптов для страницы урока
+    if (is_page_template('page-lesson.php') || (isset($_GET['id']) && is_numeric($_GET['id']))) {
+        wp_enqueue_style(
+            'cryptoschool-lesson-page-css',
+            get_template_directory_uri() . '/assets/css/lesson-page.css',
+            array('cryptoschool-main-style'),
+            filemtime(get_template_directory() . '/assets/css/lesson-page.css')
+        );
+        
+        wp_enqueue_script(
+            'cryptoschool-lesson-progress',
+            get_template_directory_uri() . '/assets/js/lesson-progress.js',
+            array('jquery'),
+            filemtime(get_template_directory() . '/assets/js/lesson-progress.js'),
+            true
+        );
+        
+        // Передаем данные урока в JavaScript
+        add_action('wp_footer', 'cryptoschool_lesson_data_script');
+    }
 }
 add_action('wp_enqueue_scripts', 'cryptoschool_enqueue_frontend_assets');
 
@@ -567,6 +591,43 @@ function cryptoschool_use_custom_password($data, $update, $user_id, $userdata) {
     }
     
     return $data;
+}
+
+/**
+ * Передача данных урока в JavaScript
+ */
+function cryptoschool_lesson_data_script() {
+    // Проверяем, что мы на странице урока
+    if (!is_page_template('page-lesson.php') && !(isset($_GET['id']) && is_numeric($_GET['id']))) {
+        return;
+    }
+    
+    // Получаем данные урока через контроллер
+    try {
+        $controller = new CryptoSchool_Lesson_Controller();
+        $lesson_data = $controller->prepare_lesson_page();
+        
+        ?>
+        <script>
+        window.cryptoschoolLessonData = {
+            isCompleted: <?php echo $lesson_data['is_lesson_completed'] ? 'true' : 'false'; ?>,
+            lessonId: <?php echo intval($lesson_data['lesson_id']); ?>,
+            tasksCount: <?php echo count($lesson_data['tasks']); ?>
+        };
+        </script>
+        <?php
+    } catch (Exception $e) {
+        // В случае ошибки передаем минимальные данные
+        ?>
+        <script>
+        window.cryptoschoolLessonData = {
+            isCompleted: false,
+            lessonId: 0,
+            tasksCount: 0
+        };
+        </script>
+        <?php
+    }
 }
 
 // ДИАГНОСТИЧЕСКОЕ ЛОГИРОВАНИЕ ОТКЛЮЧЕНО - проблема решена
