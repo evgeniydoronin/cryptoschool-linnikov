@@ -147,8 +147,13 @@ class CryptoSchool_Security_Headers {
             '::1'
         ]) || strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost:') === 0;
         
-        if ($is_local) {
-            return $result; // Не применяем ограничения на локальной среде
+        
+        // Проверяем WordPress внутренние запросы
+        $is_wp_internal = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'WordPress') !== false || 
+                         strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'wp_remote_get') !== false;
+        
+        if ($is_local || $is_wp_internal) {
+            return $result; // Не применяем ограничения на локальной среде или для WP внутренних запросов
         }
         
         // Если пользователь не авторизован

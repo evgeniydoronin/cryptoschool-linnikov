@@ -94,7 +94,7 @@
         <div class="portal-menu__group"> <a href="" class="portal-menu__main-group-item portal-menu__item">Інфо</a>
           <span class="portal-menu__group-icon icon-dropdown-arrow"></span>
           <div class="portal-menu__group-drop-down">
-            <div class="portal-menu__group-drop-down-inner"> <a href=""
+            <div class="portal-menu__group-drop-down-inner"> <a href="/blog/"
                 class="portal-menu__item portal-menu__item_submenu">Блог</a> <a href=""
                 class="portal-menu__item portal-menu__item_submenu">Словник Криптана</a> <a href=""
                 class="portal-menu__item portal-menu__item_submenu">Криптовалюты</a> </div>

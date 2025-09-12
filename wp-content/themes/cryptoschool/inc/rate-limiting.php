@@ -5,6 +5,8 @@
  * @package CryptoSchool
  */
 
+// Rate limiting система загружена
+
 // Если файл вызван напрямую, прерываем выполнение
 if (!defined('ABSPATH')) {
     exit;
@@ -102,18 +104,7 @@ class CryptoSchool_Rate_Limiting {
         $ip = self::get_client_ip();
         $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
         
-        $log_entry = sprintf(
-            '[%s] Rate limit exceeded - Action: %s, IP: %s, User-Agent: %s, Details: %s',
-            date('Y-m-d H:i:s'),
-            $action,
-            $ip,
-            $user_agent,
-            $details
-        );
-        
-        error_log($log_entry);
-        
-        // Логирование в файловую систему безопасности
+        // Логирование в файловую систему безопасности (без дублирования в error_log)
         if (class_exists('CryptoSchool_Security_Logger')) {
             CryptoSchool_Security_Logger::log(
                 'threats',
@@ -292,21 +283,46 @@ class CryptoSchool_Rate_Limiting {
      * Блокировка подозрительных запросов
      */
     public static function block_suspicious_requests() {
+        // Получаем URI запроса заранее
+        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        
         // Отключаем для локальной разработки
-        $is_local = in_array($_SERVER['HTTP_HOST'] ?? '', [
+        $is_local = in_array($host, [
             'localhost',
             '127.0.0.1',
             '::1'
-        ]) || strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost:') === 0;
+        ]) || strpos($host, 'localhost:') === 0;
         
         if ($is_local) {
             return; // Не блокируем в локальной среде
         }
         
+        // Проверяем, что это админ-панель или страница входа
+        $admin_pages = ['/wp-admin/', '/wp-login.php', '/admin-ajax.php'];
+        $is_admin_page = false;
+        foreach ($admin_pages as $page) {
+            if (strpos($request_uri, $page) !== false) {
+                $is_admin_page = true;
+                break;
+            }
+        }
+
+        // Исключаем админ-панель и администраторов
+        if ($is_admin_page || is_admin() || (defined('DOING_AJAX') && DOING_AJAX)) {
+            return;
+        }
+
+        // Дополнительная проверка для администраторов
+        if (is_user_logged_in() && current_user_can('manage_options')) {
+            return;
+        }
+        
         // Проверяем User-Agent
-        if (self::is_suspicious_user_agent()) {
-            $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? 'Empty';
-            
+        $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? 'Empty';
+        $is_suspicious_ua = self::is_suspicious_user_agent();
+        
+        if ($is_suspicious_ua) {
             // Логируем только в течение часа для одного IP
             if (!self::is_rate_limited('suspicious_ua_log', 1, 3600, $user_agent)) {
                 self::log_suspicious_activity('suspicious_user_agent', 'User-Agent: ' . $user_agent);
@@ -320,8 +336,9 @@ class CryptoSchool_Rate_Limiting {
         
         // Проверяем количество разных страниц за короткое время (возможный скан)
         // Увеличено до 200 запросов за 5 минут, чтобы не блокировать обычных пользователей
-        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
-        if (self::is_rate_limited('page_scan', 200, 300, '')) {
+        $page_scan_limited = self::is_rate_limited('page_scan', 200, 300, '');
+        
+        if ($page_scan_limited) {
             self::log_suspicious_activity('possible_scan', 'URI: ' . $request_uri);
             
             // Блокируем сканирование только после превышения нового лимита

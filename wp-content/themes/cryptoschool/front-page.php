@@ -1,6 +1,6 @@
 <?php
 /**
- * Шаблон главной страницы
+ * Template Name: Шаблон главной страницы
  *
  * @package CryptoSchool
  */

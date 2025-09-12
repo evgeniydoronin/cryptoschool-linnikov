@@ -24,6 +24,7 @@ wp-config.php
 *.log
 error_log
 access_log
+wp-content/security-logs/
 
 # Cache files
 wp-content/cache/

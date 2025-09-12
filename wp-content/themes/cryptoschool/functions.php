@@ -5,6 +5,16 @@
  * @package CryptoSchool
  */
 
+// ТЕСТОВОЕ ЛОГИРОВАНИЕ через CryptoSchool_Logger
+if (class_exists('CryptoSchool_Logger')) {
+    $logger = CryptoSchool_Logger::get_instance();
+    $logger->info('Тестовое сообщение из functions.php', [
+        'timestamp' => date('Y-m-d H:i:s'),
+        'request_uri' => $_SERVER['REQUEST_URI'] ?? 'undefined',
+        'source' => 'theme_functions'
+    ]);
+}
+
 // Подключение автозагрузчика Composer
 if (file_exists(dirname(__DIR__, 3) . '/vendor/autoload.php')) {
     require_once dirname(__DIR__, 3) . '/vendor/autoload.php';
@@ -204,43 +214,28 @@ add_action('after_setup_theme', 'cryptoschool_hide_admin_bar');
 
 /**
  * Перенаправление студентов с админки на главную страницу
+ * Диагностическая версия с расширенным логированием
  */
 function cryptoschool_redirect_non_admin_users() {
-    // Добавляем детальное логирование
-    if (is_admin() && !(defined('DOING_AJAX') && DOING_AJAX)) {
-        $current_user = wp_get_current_user();
-        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
-        
-        // Логируем все детали
-        error_log('=== CryptoSchool Redirect Debug ===');
-        error_log('Request URI: ' . $request_uri);
-        error_log('User ID: ' . $current_user->ID);
-        error_log('User login: ' . $current_user->user_login);
-        error_log('User roles: ' . implode(', ', $current_user->roles));
-        error_log('Is admin page: ' . (is_admin() ? 'yes' : 'no'));
-        error_log('Current page: ' . (isset($_GET['page']) ? $_GET['page'] : 'not set'));
-        error_log('Pagenow: ' . ($GLOBALS['pagenow'] ?? 'not set'));
-        
-        // Проверяем различные capabilities
-        error_log('Capabilities check:');
-        error_log('- administrator: ' . (current_user_can('administrator') ? 'yes' : 'no'));
-        error_log('- manage_options: ' . (current_user_can('manage_options') ? 'yes' : 'no'));
-        error_log('- activate_plugins: ' . (current_user_can('activate_plugins') ? 'yes' : 'no'));
-        error_log('- install_plugins: ' . (current_user_can('install_plugins') ? 'yes' : 'no'));
-        
-        // Проверяем, на какой именно странице мы находимся
-        if (strpos($request_uri, 'plugins.php') !== false) {
-            error_log('!!! On plugins.php page !!!');
-        }
-        
-        error_log('=== End Debug ===');
-        
-        // Оригинальная проверка
-        if (!current_user_can('administrator')) {
-            error_log('REDIRECTING: User does not have administrator capability');
-            wp_redirect(home_url());
-            exit;
-        }
+    global $pagenow;
+    
+    // Проверки без избыточного логирования
+    if (!is_admin()) {
+        return;
+    }
+    
+    if (defined('DOING_AJAX') && DOING_AJAX) {
+        return;
+    }
+    
+    if (in_array($pagenow, ['wp-login.php', 'wp-cron.php', 'xmlrpc.php'])) {
+        return;
+    }
+    
+    // Проверка прав
+    if (!current_user_can('administrator') && !current_user_can('manage_options')) {
+        wp_redirect(home_url());
+        exit;
     }
 }
 add_action('init', 'cryptoschool_redirect_non_admin_users');

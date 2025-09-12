@@ -75,12 +75,6 @@ class CryptoSchool_Logger {
         $upload_dir = wp_upload_dir();
         $this->log_file = $upload_dir['basedir'] . '/cryptoschool-logs/cryptoschool.log';
 
-        // Создание директории для логов, если она не существует
-        $log_dir = dirname($this->log_file);
-        if (!file_exists($log_dir)) {
-            wp_mkdir_p($log_dir);
-        }
-
         // Установка уровня логирования из настроек
         $this->current_level = get_option('cryptoschool_log_level', 'info');
     }
@@ -152,10 +146,8 @@ class CryptoSchool_Logger {
         // Запись в файл лога
         $this->write_to_log($log_message);
 
-        // Дублирование в error_log, если включен режим отладки
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log($log_message);
-        }
+        // Дублирование в error_log отключено для предотвращения переполнения FastCGI буферов
+        // Все логи сохраняются в файл: wp-content/uploads/cryptoschool-logs/cryptoschool.log
     }
 
     /**
@@ -207,7 +199,41 @@ class CryptoSchool_Logger {
      * @return void
      */
     private function write_to_log($message) {
-        file_put_contents($this->log_file, $message, FILE_APPEND);
+        // Проверяем возможность записи в файл лога
+        $log_dir = dirname($this->log_file);
+        
+        // Если директория не существует или нет прав на запись
+        if (!is_dir($log_dir) || !is_writable($log_dir)) {
+            // Выводим предупреждение только один раз за сессию
+            static $permission_warning_shown = false;
+            if (!$permission_warning_shown) {
+                error_log("CryptoSchool Logger: Cannot write to log directory {$log_dir}. Check permissions.");
+                $permission_warning_shown = true;
+            }
+            return;
+        }
+        
+        // Если файл существует, но нет прав на запись в него
+        if (file_exists($this->log_file) && !is_writable($this->log_file)) {
+            static $file_warning_shown = false;
+            if (!$file_warning_shown) {
+                error_log("CryptoSchool Logger: Cannot write to log file {$this->log_file}. Check permissions.");
+                $file_warning_shown = true;
+            }
+            return;
+        }
+        
+        // Пытаемся записать в файл
+        $result = file_put_contents($this->log_file, $message, FILE_APPEND | LOCK_EX);
+        
+        // Если запись не удалась
+        if ($result === false) {
+            static $write_error_shown = false;
+            if (!$write_error_shown) {
+                error_log("CryptoSchool Logger: Failed to write to log file {$this->log_file}");
+                $write_error_shown = true;
+            }
+        }
     }
 
     /**

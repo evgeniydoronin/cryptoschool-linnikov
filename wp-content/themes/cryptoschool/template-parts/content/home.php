@@ -1,9 +1,13 @@
 <?php
+
 /**
  * Шаблон основного содержимого главной страницы
  *
  * @package CryptoSchool
  */
+
+$hp_zagolovok = get_field('hp_zagolovok');
+$hp_knopky = get_field('hp_knopky');
 ?>
 <main>
   <div class="page-background">
@@ -14,18 +18,26 @@
   <div class="home-hero">
     <div class="container container_wide home-hero__container">
       <div class="home-hero-content">
-        <h1 class="h1 home-hero-content__title"> <span class="h2">ВАШ ГІД У СВІТ</span> <span>КРИПТОВАЛЮТ</span> </h1>
+        <h1 class="h1 home-hero-content__title">
+          <span class="h2"><?php echo $hp_zagolovok['hp_zagolovok_1']; ?></span>
+          <span><?php echo $hp_zagolovok['hp_zagolovok_2']; ?></span>
+        </h1>
         <p class="text home-hero-content__description">
-          Наші продукти та сервіси допоможуть на кожному етапі криптана,
-          щоб ваш шлях був простим та максимально ефективним
+          <?php echo get_field('hp_podzagolovok'); ?>
         </p>
-        <div class="home-hero-content__buttons"> <button class="button button_filled button_big"> <span
+        <div class="home-hero-content__buttons">
+          <a href="<?php echo $hp_knopky['hp_levaya_knopka']['url']; ?>" class="button button_filled button_big"> <span
               class="button__text button__text_uppercase">
-              Купити курс
-            </span> </button> <button class="button button_outlined button_big"> <span
+              <?php echo $hp_knopky['hp_levaya_knopka']['title']; ?>
+            </span>
+          </a>
+          <a href="<?php echo $hp_knopky['hp_pravaya_knopka']['url']; ?>" class="button button_outlined button_big"> 
+            <span
               class="button__text button__text_black button__text_uppercase">
-              У мене точно вийде?
-            </span> </button> </div>
+              <?php echo $hp_knopky['hp_pravaya_knopka']['title']; ?>
+            </span> 
+          </a>
+        </div>
       </div>
       <div class="home-hero__image">
         <div class="ratio-wrap ratio-wrap_contain home-hero__image-wrap"> <img src="<?php echo get_template_directory_uri(); ?>/frontend-source/dist/assets/img/home-hero-light.png"
