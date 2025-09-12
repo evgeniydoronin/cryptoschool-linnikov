@@ -370,8 +370,18 @@ get_header();
                         <div class="account-article-content">
                             <div class="account-article-content__block">
                                 <?php 
-                                $lesson_content = isset($lesson_model->content) ? $lesson_model->content : (method_exists($lesson_model, 'getAttribute') ? $lesson_model->getAttribute('content') : '');
-                                echo wp_kses_post($lesson_content); 
+                                // Устанавливаем глобальный $post для корректной работы the_content()
+                                global $post;
+                                $original_post = $post;
+                                $post = $lesson_post;
+                                setup_postdata($post);
+                                
+                                // Выводим контент урока через стандартную WordPress функцию
+                                the_content();
+                                
+                                // Восстанавливаем оригинальный $post
+                                $post = $original_post;
+                                wp_reset_postdata();
                                 ?>
                             </div>
                         </div>

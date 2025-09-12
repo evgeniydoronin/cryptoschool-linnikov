@@ -380,6 +380,11 @@ function cryptoschool_enqueue_frontend_assets() {
         filemtime(get_template_directory() . '/frontend-source/dist/assets/main.css')
     );
     
+    // Принудительное подключение jQuery на страницах уроков для работы видео плеера
+    if (is_page_template('page-lesson.php') || (isset($_GET['id']) && is_numeric($_GET['id']))) {
+        wp_enqueue_script('jquery');
+    }
+    
     // Подключение vanilla-drawers с атрибутом type="module"
     add_filter('script_loader_tag', 'cryptoschool_add_module_type', 10, 3);
     
