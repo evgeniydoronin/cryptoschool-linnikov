@@ -412,6 +412,24 @@ class CryptoSchool_File_Security {
      * @return string
      */
     public static function sanitize_filename($filename) {
+        // Проверяем, является ли это файлом лога безопасности
+        // Если да, то не добавляем timestamp для сохранения правильного именования
+        if (preg_match('/\.(log)$/i', $filename) && 
+            preg_match('/^[a-zA-Z0-9_-]+-\d{4}-\d{2}-\d{2}\.log$/i', $filename)) {
+            // Это файл лога с правильным форматом (event_type-YYYY-MM-DD.log)
+            // Возвращаем как есть, только с базовой санитизацией
+            $filename = preg_replace('/[^a-zA-Z0-9._-]/', '_', $filename);
+            $filename = preg_replace('/\.+/', '.', $filename);
+            $filename = trim($filename, '.');
+            
+            if (strlen($filename) > 255) {
+                $filename = substr($filename, 0, 255);
+            }
+            
+            return $filename;
+        }
+        
+        // Для всех остальных файлов применяем стандартную обработку
         // Удаляем опасные символы
         $filename = preg_replace('/[^a-zA-Z0-9._-]/', '_', $filename);
         
@@ -426,7 +444,7 @@ class CryptoSchool_File_Security {
             $filename = substr($filename, 0, 255);
         }
         
-        // Добавляем временную метку для уникальности
+        // Добавляем временную метку для уникальности (только для НЕ-логов)
         $info = pathinfo($filename);
         $name = $info['filename'];
         $ext = isset($info['extension']) ? '.' . $info['extension'] : '';

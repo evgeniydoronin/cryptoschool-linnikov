@@ -90,7 +90,12 @@ class CryptoSchool_Admin {
         
         // Подключение файлов помощников
         require_once plugin_dir_path(__FILE__) . 'helpers/modal-helper.php';
-        
+
+        // Подключение настроек Crypto Pay
+        if (file_exists(plugin_dir_path(__FILE__) . 'includes/cryptopay-settings.php')) {
+            require_once plugin_dir_path(__FILE__) . 'includes/cryptopay-settings.php';
+        }
+
         // Инициализация контроллеров
         $this->packages_controller = new CryptoSchool_Admin_Packages_Controller($this->loader);
         $this->user_accesses_controller = new CryptoSchool_Admin_UserAccesses_Controller($this->loader);

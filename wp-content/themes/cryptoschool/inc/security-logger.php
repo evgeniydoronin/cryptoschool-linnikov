@@ -127,11 +127,8 @@ class CryptoSchool_Security_Logger {
             'context' => $context
         ];
         
-        // Записываем в файл (человекочитаемый формат)
+        // Записываем только в обычный файл лога (убираем дублирование JSON)
         self::write_to_file($category, $event_type, $log_entry, 'readable');
-        
-        // Записываем в JSON файл для парсинга
-        self::write_to_file($category, $event_type, $log_entry, 'json');
         
         // Отправляем алерт при критических событиях
         if ($level === self::LEVEL_CRITICAL) {
@@ -325,7 +322,7 @@ class CryptoSchool_Security_Logger {
     }
     
     /**
-     * Логирование доступа к админке
+     * Логирование доступа к админке (только значимые события)
      */
     public static function log_admin_access() {
         if (!is_admin() || wp_doing_ajax() || wp_doing_cron()) {
@@ -341,19 +338,85 @@ class CryptoSchool_Security_Logger {
                 'Unauthorized admin access attempt',
                 self::LEVEL_WARNING
             );
-        } else {
-            // Обычный доступ к админке
-            self::log(
-                'access',
-                'admin_access',
-                "Admin access by user: {$current_user->user_login}",
-                self::LEVEL_INFO,
-                [
-                    'user_id' => $current_user->ID,
-                    'admin_page' => $_GET['page'] ?? 'dashboard'
-                ]
-            );
+            return;
         }
+        
+        // Проверяем, нужно ли логировать этот доступ
+        if (!self::should_log_admin_access($current_user->ID)) {
+            return;
+        }
+        
+        $admin_page = $_GET['page'] ?? 'dashboard';
+        $current_screen = get_current_screen();
+        $screen_id = $current_screen ? $current_screen->id : 'unknown';
+        
+        // Логируем значимый доступ к админке
+        self::log(
+            'access',
+            'admin_access',
+            "Admin access by user: {$current_user->user_login} to {$screen_id}",
+            self::LEVEL_INFO,
+            [
+                'user_id' => $current_user->ID,
+                'admin_page' => $admin_page,
+                'screen_id' => $screen_id
+            ]
+        );
+    }
+    
+    /**
+     * Проверка, нужно ли логировать доступ админа
+     *
+     * @param int $user_id ID пользователя
+     * @return bool
+     */
+    private static function should_log_admin_access($user_id) {
+        $current_screen = get_current_screen();
+        $screen_id = $current_screen ? $current_screen->id : '';
+        
+        // Критические разделы - всегда логируем
+        $critical_screens = [
+            'users',
+            'user-edit',
+            'user-new',
+            'options-general',
+            'options-writing',
+            'options-reading',
+            'options-discussion',
+            'options-media',
+            'options-permalink',
+            'plugins',
+            'plugin-install',
+            'plugin-editor',
+            'themes',
+            'theme-install',
+            'theme-editor',
+            'tools',
+            'import',
+            'export'
+        ];
+        
+        if (in_array($screen_id, $critical_screens)) {
+            return true;
+        }
+        
+        // Проверяем время последнего логирования для этого пользователя
+        $cache_key = 'admin_access_logged_' . $user_id;
+        $last_logged = get_transient($cache_key);
+        
+        if (!$last_logged) {
+            // Первый доступ за период - логируем
+            set_transient($cache_key, time(), 2 * HOUR_IN_SECONDS); // 2 часа
+            return true;
+        }
+        
+        // Если прошло более 2 часов с последнего логирования - логируем
+        if ((time() - $last_logged) > 2 * HOUR_IN_SECONDS) {
+            set_transient($cache_key, time(), 2 * HOUR_IN_SECONDS);
+            return true;
+        }
+        
+        return false;
     }
     
     /**
@@ -561,36 +624,68 @@ class CryptoSchool_Security_Logger {
         ];
         
         $start_date = date('Y-m-d', strtotime("-{$days} days"));
-        $directories = glob(self::LOG_DIR . '/*/*.json');
         
-        foreach ($directories as $file) {
-            $file_date = basename($file, '.log.json');
-            $file_date = substr($file_date, strrpos($file_date, '-') + 1, 10);
+        // Ищем только .log файлы (JSON файлы больше не создаются)
+        $directories = [
+            self::LOG_DIR . '/auth',
+            self::LOG_DIR . '/threats', 
+            self::LOG_DIR . '/access'
+        ];
+        
+        foreach ($directories as $dir) {
+            if (!is_dir($dir)) {
+                continue;
+            }
             
-            if ($file_date >= $start_date) {
-                $content = file_get_contents($file);
-                $lines = explode("\n", trim($content));
-                
-                foreach ($lines as $line) {
-                    if (empty($line)) continue;
+            $log_files = glob($dir . '/*.log');
+            foreach ($log_files as $file) {
+                // Извлекаем дату из имени файла (формат: event_type-YYYY-MM-DD.log)
+                $filename = basename($file, '.log');
+                if (preg_match('/^(.+)-(\d{4}-\d{2}-\d{2})$/', $filename, $matches)) {
+                    $event_type = $matches[1];
+                    $file_date = $matches[2];
                     
-                    $entry = json_decode($line, true);
-                    if ($entry) {
-                        $stats['total_events']++;
-                        $stats['by_level'][$entry['level']]++;
+                    if ($file_date >= $start_date) {
+                        $content = file_get_contents($file);
+                        $lines = explode("\n", trim($content));
                         
-                        if (!isset($stats['by_category'][$entry['category']])) {
-                            $stats['by_category'][$entry['category']] = 0;
-                        }
-                        $stats['by_category'][$entry['category']]++;
-                        
-                        if (!isset($stats['top_ips'][$entry['ip']])) {
-                            $stats['top_ips'][$entry['ip']] = 0;
-                        }
-                        $stats['top_ips'][$entry['ip']]++;
-                        
-                        if ($entry['level'] === self::LEVEL_CRITICAL) {
-                            $stats['recent_threats'][] = $entry;
+                        foreach ($lines as $line) {
+                            if (empty($line)) continue;
+                            
+                            // Парсим строку лога (формат: [timestamp] LEVEL [event_type] message - IP: ip, ...)
+                            if (preg_match('/^\[([^\]]+)\]\s+(\w+)\s+\[([^\]]+)\]\s+(.+?)\s+-\s+IP:\s+([^,]+)/', $line, $log_matches)) {
+                                $timestamp = $log_matches[1];
+                                $level = strtolower($log_matches[2]);
+                                $parsed_event_type = $log_matches[3];
+                                $message = $log_matches[4];
+                                $ip = $log_matches[5];
+                                
+                                $stats['total_events']++;
+                                
+                                if (isset($stats['by_level'][$level])) {
+                                    $stats['by_level'][$level]++;
+                                }
+                                
+                                $category = basename($dir);
+                                if (!isset($stats['by_category'][$category])) {
+                                    $stats['by_category'][$category] = 0;
+                                }
+                                $stats['by_category'][$category]++;
+                                
+                                if (!isset($stats['top_ips'][$ip])) {
+                                    $stats['top_ips'][$ip] = 0;
+                                }
+                                $stats['top_ips'][$ip]++;
+                                
+                                if ($level === self::LEVEL_CRITICAL) {
+                                    $stats['recent_threats'][] = [
+                                        'timestamp' => $timestamp,
+                                        'event_type' => $parsed_event_type,
+                                        'message' => $message,
+                                        'ip' => $ip
+                                    ];
+                                }
+                            }
                         }
                     }
                 }

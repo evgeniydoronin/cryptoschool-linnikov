@@ -130,6 +130,9 @@ class CryptoSchool {
     
     // Подключение сервисов WPML
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-wpml.php';
+
+    // Подключение сервиса Crypto Pay
+    require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/services/class-cryptoschool-service-cryptopay.php';
     
     // Подключение Custom Post Types
     require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/post-types/class-cryptoschool-post-types.php';
@@ -275,6 +278,7 @@ class CryptoSchool {
             'CryptoSchool_Public_Profile',
             'CryptoSchool_Service_Referral',
             'CryptoSchool_Service_Points',
+            'CryptoSchool_Service_CryptoPay',
             'CryptoSchool_Post_Types'
         ];
     }
@@ -286,7 +290,13 @@ class CryptoSchool {
         // Создание таблиц в базе данных
         require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/class-cryptoschool-activator.php';
         CryptoSchool_Activator::activate();
-        
+
+        // Запуск миграции Crypto Pay
+        if (file_exists(CRYPTOSCHOOL_PLUGIN_DIR . 'includes/migrations/class-cryptoschool-migration-cryptopay.php')) {
+            require_once CRYPTOSCHOOL_PLUGIN_DIR . 'includes/migrations/class-cryptoschool-migration-cryptopay.php';
+            CryptoSchool_Migration_CryptoPay::up();
+        }
+
         // Установка флага активации для перенаправления на страницу настроек
         set_transient('cryptoschool_activation_redirect', true, 30);
     }

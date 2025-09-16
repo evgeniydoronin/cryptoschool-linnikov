@@ -12,10 +12,16 @@ if (!defined('ABSPATH')) {
 }
 
 // Получение настроек плагина
-$settings = [];
+$settings = apply_filters('cryptoschool_payment_settings', []);
 
-// Здесь будет код для получения настроек из базы данных
-// Это заглушка, которая будет заменена на реальный код при реализации функционала
+// Добавляем значения по умолчанию если не установлены
+$settings = wp_parse_args($settings, [
+    'crypto_gateway' => 'cryptopay',
+    'cryptopay_api_token' => '',
+    'cryptopay_testnet_mode' => 1,
+    'admin_telegram_id' => '',
+    'notification_bot_token' => '',
+]);
 ?>
 
 <div class="wrap cryptoschool-admin">
@@ -199,15 +205,57 @@ $settings = [];
                             </div>
                             
                             <h3><?php _e('Криптовалютные платежи', 'cryptoschool'); ?></h3>
-                            
+
                             <div class="cryptoschool-admin-form-row">
                                 <label for="crypto_gateway"><?php _e('Платежный шлюз:', 'cryptoschool'); ?></label>
                                 <select id="crypto_gateway" name="crypto_gateway" class="regular-text">
+                                    <option value="cryptopay" <?php selected(isset($settings['crypto_gateway']) ? $settings['crypto_gateway'] : '', 'cryptopay'); ?>>Crypto Pay (Telegram)</option>
                                     <option value="coinbase" <?php selected(isset($settings['crypto_gateway']) ? $settings['crypto_gateway'] : '', 'coinbase'); ?>>Coinbase Commerce</option>
                                     <option value="cryptocloud" <?php selected(isset($settings['crypto_gateway']) ? $settings['crypto_gateway'] : '', 'cryptocloud'); ?>>CryptoCloud</option>
                                     <option value="binance" <?php selected(isset($settings['crypto_gateway']) ? $settings['crypto_gateway'] : '', 'binance'); ?>>Binance Pay</option>
                                 </select>
                                 <p class="description"><?php _e('Платежный шлюз для криптовалютных платежей.', 'cryptoschool'); ?></p>
+                            </div>
+
+                            <!-- Crypto Pay настройки -->
+                            <div class="crypto-gateway cryptopay" <?php echo !isset($settings['crypto_gateway']) || $settings['crypto_gateway'] !== 'cryptopay' ? 'style="display: none;"' : ''; ?>>
+                                <h4><?php _e('Настройки Crypto Pay', 'cryptoschool'); ?></h4>
+
+                                <div class="cryptoschool-admin-form-row">
+                                    <label for="cryptopay_api_token"><?php _e('API Token:', 'cryptoschool'); ?></label>
+                                    <input type="text" id="cryptopay_api_token" name="cryptopay_api_token" class="regular-text" value="<?php echo isset($settings['cryptopay_api_token']) ? esc_attr($settings['cryptopay_api_token']) : ''; ?>">
+                                    <p class="description"><?php _e('Токен от @CryptoBot или @CryptoTestnetBot', 'cryptoschool'); ?></p>
+                                </div>
+
+                                <div class="cryptoschool-admin-form-row">
+                                    <label for="cryptopay_testnet_mode"><?php _e('Тестовый режим:', 'cryptoschool'); ?></label>
+                                    <input type="checkbox" id="cryptopay_testnet_mode" name="cryptopay_testnet_mode" value="1" <?php checked(isset($settings['cryptopay_testnet_mode']) ? $settings['cryptopay_testnet_mode'] : 1, 1); ?>>
+                                    <p class="description"><?php _e('Использовать @CryptoTestnetBot для тестирования', 'cryptoschool'); ?></p>
+                                </div>
+
+                                <div class="cryptoschool-admin-form-row">
+                                    <label for="cryptopay_webhook_url"><?php _e('Webhook URL:', 'cryptoschool'); ?></label>
+                                    <input type="text" id="cryptopay_webhook_url" class="regular-text" value="<?php echo esc_url(home_url('/wp-json/cryptoschool/v1/cryptopay/webhook')); ?>" readonly>
+                                    <button type="button" class="button" onclick="navigator.clipboard.writeText(this.previousElementSibling.value)">📋 <?php _e('Копировать', 'cryptoschool'); ?></button>
+                                    <p class="description"><?php _e('Скопируйте этот URL и установите в настройках бота', 'cryptoschool'); ?></p>
+                                </div>
+
+                                <div class="cryptoschool-admin-form-row">
+                                    <label for="admin_telegram_id"><?php _e('Telegram ID администратора:', 'cryptoschool'); ?></label>
+                                    <input type="text" id="admin_telegram_id" name="admin_telegram_id" class="regular-text" value="<?php echo isset($settings['admin_telegram_id']) ? esc_attr($settings['admin_telegram_id']) : ''; ?>">
+                                    <p class="description"><?php _e('ID для отправки уведомлений о платежах. Узнать ID можно у @userinfobot', 'cryptoschool'); ?></p>
+                                </div>
+
+                                <div class="cryptoschool-admin-form-row">
+                                    <label for="notification_bot_token"><?php _e('Токен бота для уведомлений:', 'cryptoschool'); ?></label>
+                                    <input type="text" id="notification_bot_token" name="notification_bot_token" class="regular-text" value="<?php echo isset($settings['notification_bot_token']) ? esc_attr($settings['notification_bot_token']) : ''; ?>">
+                                    <p class="description"><?php _e('Токен бота, который будет отправлять уведомления (создайте через @BotFather)', 'cryptoschool'); ?></p>
+                                </div>
+
+                                <div class="cryptoschool-admin-form-row">
+                                    <button type="button" class="button" id="test-cryptopay-connection"><?php _e('Проверить подключение', 'cryptoschool'); ?></button>
+                                    <span id="cryptopay-test-result"></span>
+                                </div>
                             </div>
                             
                             <div class="cryptoschool-admin-form-row crypto-gateway coinbase" <?php echo isset($settings['crypto_gateway']) && $settings['crypto_gateway'] !== 'coinbase' ? 'style="display: none;"' : ''; ?>>
@@ -465,9 +513,49 @@ jQuery(document).ready(function($) {
     // Переключение полей для криптовалютных платежных шлюзов
     $('#crypto_gateway').on('change', function() {
         var gateway = $(this).val();
-        
+
         $('.crypto-gateway').hide();
         $('.crypto-gateway.' + gateway).show();
+    });
+
+    // Тест подключения к Crypto Pay
+    $('#test-cryptopay-connection').on('click', function() {
+        var button = $(this);
+        var resultSpan = $('#cryptopay-test-result');
+        var token = $('#cryptopay_api_token').val();
+        var testnet = $('#cryptopay_testnet_mode').is(':checked');
+
+        if (!token) {
+            resultSpan.html('<span style="color: red;">❌ Введите API токен</span>');
+            return;
+        }
+
+        button.prop('disabled', true);
+        resultSpan.html('<span style="color: blue;">⏳ Проверка...</span>');
+
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'test_cryptopay_connection',
+                token: token,
+                testnet: testnet ? 1 : 0,
+                nonce: '<?php echo wp_create_nonce("cryptopay_test_nonce"); ?>'
+            },
+            success: function(response) {
+                if (response.success) {
+                    resultSpan.html('<span style="color: green;">✅ Подключение успешно!</span>');
+                } else {
+                    resultSpan.html('<span style="color: red;">❌ ' + response.data + '</span>');
+                }
+            },
+            error: function() {
+                resultSpan.html('<span style="color: red;">❌ Ошибка подключения</span>');
+            },
+            complete: function() {
+                button.prop('disabled', false);
+            }
+        });
     });
     
     // Переключение полей для платежных шлюзов банковских карт
@@ -533,11 +621,36 @@ jQuery(document).ready(function($) {
     // Отправка формы настроек платежей
     $('#payments-settings-form').on('submit', function(e) {
         e.preventDefault();
-        
-        // Здесь будет AJAX-запрос для сохранения настроек
-        // Это заглушка, которая будет заменена на реальный код при реализации функционала
-        
-        alert('<?php _e('Настройки платежей успешно сохранены.', 'cryptoschool'); ?>');
+
+        var formData = {
+            action: 'save_payment_settings',
+            nonce: '<?php echo wp_create_nonce("payment_settings_nonce"); ?>',
+            currency: $('#currency').val(),
+            payment_methods: $('input[name="payment_methods[]"]:checked').map(function() {
+                return $(this).val();
+            }).get(),
+            crypto_gateway: $('#crypto_gateway').val(),
+            cryptopay_api_token: $('#cryptopay_api_token').val(),
+            cryptopay_testnet_mode: $('#cryptopay_testnet_mode').is(':checked') ? 1 : 0,
+            admin_telegram_id: $('#admin_telegram_id').val(),
+            notification_bot_token: $('#notification_bot_token').val()
+        };
+
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: formData,
+            success: function(response) {
+                if (response.success) {
+                    alert('<?php _e('Настройки платежей успешно сохранены.', 'cryptoschool'); ?>');
+                } else {
+                    alert('<?php _e('Ошибка:', 'cryptoschool'); ?> ' + response.data);
+                }
+            },
+            error: function() {
+                alert('<?php _e('Ошибка подключения', 'cryptoschool'); ?>');
+            }
+        });
     });
     
     // Отправка формы настроек реферальной системы
